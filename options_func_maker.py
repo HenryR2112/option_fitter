@@ -213,6 +213,8 @@ def black_scholes_call(
     """
     if T <= 0:
         return max(S - K, 0.0)
+    if K <= 0:
+        return max(S - K * np.exp(-r * T), 0.0)  # Deep ITM call
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
@@ -247,6 +249,8 @@ def black_scholes_put(
     """
     if T <= 0:
         return max(K - S, 0.0)
+    if K <= 0:
+        return 0.0  # Put with K=0 is worthless
 
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
@@ -284,6 +288,8 @@ def black_scholes_delta_call(
     """Calculate delta (price sensitivity) for a call option."""
     if T <= 0:
         return 1.0 if S > K else 0.0
+    if K <= 0:
+        return 1.0  # Deep ITM call has delta ~1
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     return cumulative_normal(np.array([d1]))[0]
 
@@ -294,13 +300,15 @@ def black_scholes_delta_put(
     """Calculate delta (price sensitivity) for a put option."""
     if T <= 0:
         return -1.0 if S < K else 0.0
+    if K <= 0:
+        return 0.0  # Put with K=0 has delta 0
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     return cumulative_normal(np.array([d1]))[0] - 1.0
 
 
 def black_scholes_gamma(S: float, K: float, T: float, r: float, sigma: float) -> float:
     """Calculate gamma (delta sensitivity) for an option."""
-    if T <= 0:
+    if T <= 0 or K <= 0:
         return 0.0
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     # Gamma is the same for calls and puts
@@ -309,7 +317,7 @@ def black_scholes_gamma(S: float, K: float, T: float, r: float, sigma: float) ->
 
 def black_scholes_vega(S: float, K: float, T: float, r: float, sigma: float) -> float:
     """Calculate vega (volatility sensitivity) for an option."""
-    if T <= 0:
+    if T <= 0 or K <= 0:
         return 0.0
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     # Vega is the same for calls and puts
@@ -322,7 +330,7 @@ def black_scholes_theta_call(
     S: float, K: float, T: float, r: float, sigma: float
 ) -> float:
     """Calculate theta (time decay) for a call option."""
-    if T <= 0:
+    if T <= 0 or K <= 0:
         return 0.0
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
@@ -340,7 +348,7 @@ def black_scholes_theta_put(
     S: float, K: float, T: float, r: float, sigma: float
 ) -> float:
     """Calculate theta (time decay) for a put option."""
-    if T <= 0:
+    if T <= 0 or K <= 0:
         return 0.0
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)

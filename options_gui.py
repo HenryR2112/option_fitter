@@ -1,19 +1,26 @@
 """
-Enhanced GUI Client for Options-Based Function Approximation
+Professional GUI for Options-Based Function Approximation
 
-A modern tkinter-based interface with improved error handling, performance,
-and structured display boxes for decomposing complex functions into vanilla options.
+A modern, polished tkinter-based interface inspired by professional trading terminals.
+Features include interactive charts, real-time validation, export capabilities,
+and a clean, dark theme optimized for financial applications.
 """
 
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, filedialog
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends._backend_tk import NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import threading
 import traceback
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
+from datetime import datetime
+import csv
+import io
+import sys
+
 from options_func_maker import (
     OptionsFunctionApproximator,
     sigmoid,
@@ -22,1359 +29,1076 @@ from options_func_maker import (
 )
 
 
-class ModernStyle:
-    """Modern Professional Finance Tool Color Scheme - Bloomberg/TradingView inspired."""
+class Theme:
+    """Professional dark theme - inspired by modern trading terminals."""
 
-    # Modern Dark Theme Backgrounds
-    BG_PRIMARY = "#0f1419"  # Deep dark blue-gray (main background)
-    BG_SECONDARY = "#1a1f2e"  # Dark blue-gray (panels/cards)
-    BG_ACCENT = "#252b3b"  # Lighter blue-gray (hover states)
-    BG_HIGHLIGHT = "#2d3447"  # Highlighted elements
-    BG_CARD = "#1e2332"  # Card background
-    BG_INPUT = "#151a25"  # Input field background
+    # Core backgrounds
+    BG_DARK = "#0d1117"       # Darkest background
+    BG_PRIMARY = "#161b22"    # Main panels
+    BG_SECONDARY = "#21262d"  # Cards and elevated elements
+    BG_TERTIARY = "#30363d"   # Input fields, hover states
+    BG_HOVER = "#2d333b"      # Subtle hover highlight
 
-    # Professional Text Colors
-    TEXT_PRIMARY = "#e4e6eb"  # Off-white (primary text)
-    TEXT_SECONDARY = "#9ca3af"  # Medium gray (secondary text)
-    TEXT_MUTED = "#6b7280"  # Muted gray (tertiary text)
-    TEXT_DISABLED = "#4b5563"  # Disabled text
+    # Text hierarchy
+    TEXT_PRIMARY = "#f0f6fc"   # Primary text
+    TEXT_SECONDARY = "#8b949e" # Secondary text
+    TEXT_MUTED = "#6e7681"     # Muted/disabled text
+    TEXT_LINK = "#58a6ff"      # Links and interactive text
 
-    # Finance Color Palette (Professional)
-    ACCENT_PRIMARY = "#3b82f6"  # Professional blue (primary actions)
-    ACCENT_SUCCESS = "#10b981"  # Professional green (positive/gains)
-    ACCENT_DANGER = "#ef4444"  # Professional red (negative/losses)
-    ACCENT_WARNING = "#f59e0b"  # Professional amber (warnings)
-    ACCENT_INFO = "#06b6d4"  # Professional cyan (info)
+    # Accent colors
+    ACCENT_BLUE = "#58a6ff"    # Primary actions
+    ACCENT_GREEN = "#3fb950"   # Success, positive values
+    ACCENT_RED = "#f85149"     # Errors, negative values
+    ACCENT_YELLOW = "#d29922"  # Warnings
+    ACCENT_PURPLE = "#a371f7"  # Special highlights
+    ACCENT_CYAN = "#39c5cf"    # Info
 
-    # Chart Colors
-    CHART_LINE_1 = "#3b82f6"  # Blue for target function
-    CHART_LINE_2 = "#ef4444"  # Red for approximation
-    CHART_GRID = "#2d3447"  # Subtle grid lines
-    CHART_AXIS = "#6b7280"  # Axis labels
+    # Chart colors
+    CHART_PRIMARY = "#58a6ff"   # Main series
+    CHART_SECONDARY = "#f85149" # Comparison series
+    CHART_GRID = "#30363d"      # Grid lines
+    CHART_BG = "#0d1117"        # Chart background
 
-    # UI Element Colors
-    BORDER_COLOR = "#2d3447"  # Subtle borders
-    BORDER_ACTIVE = "#3b82f6"  # Active border (focus)
-    SELECTION_COLOR = "#3b82f6"  # Selection highlight
-    SHADOW_COLOR = "#000000"  # Shadow color
+    # Borders
+    BORDER_DEFAULT = "#30363d"
+    BORDER_FOCUS = "#58a6ff"
+    BORDER_MUTED = "#21262d"
 
-    # Status Colors
-    STATUS_SUCCESS = "#10b981"  # Success state
-    STATUS_ERROR = "#ef4444"  # Error state
-    STATUS_WARNING = "#f59e0b"  # Warning state
-    STATUS_INFO = "#06b6d4"  # Info state
+    # Fonts
+    FONT_FAMILY = "Segoe UI"
+    FONT_MONO = "Consolas"
 
-    # Plot colors (for matplotlib)
-    PLOT_BG = "#0f1419"  # Plot background
-    PLOT_FG = "#e4e6eb"  # Plot foreground/text
-    PLOT_GRID = "#2d3447"  # Plot grid
+    @classmethod
+    def configure_matplotlib(cls):
+        """Configure matplotlib for dark theme."""
+        plt.style.use('dark_background')
+        plt.rcParams.update({
+            'figure.facecolor': cls.CHART_BG,
+            'axes.facecolor': cls.BG_PRIMARY,
+            'axes.edgecolor': cls.BORDER_DEFAULT,
+            'axes.labelcolor': cls.TEXT_PRIMARY,
+            'axes.titlecolor': cls.TEXT_PRIMARY,
+            'xtick.color': cls.TEXT_SECONDARY,
+            'ytick.color': cls.TEXT_SECONDARY,
+            'text.color': cls.TEXT_PRIMARY,
+            'grid.color': cls.CHART_GRID,
+            'grid.alpha': 0.3,
+            'legend.facecolor': cls.BG_SECONDARY,
+            'legend.edgecolor': cls.BORDER_DEFAULT,
+            'font.family': 'sans-serif',
+            'font.sans-serif': [cls.FONT_FAMILY, 'Arial', 'Helvetica'],
+        })
 
 
 class ValidationError(Exception):
-    """Custom exception for validation errors."""
-
+    """Custom exception for input validation errors."""
     pass
 
 
+class StyledEntry(tk.Entry):
+    """Custom styled entry widget with validation feedback."""
+
+    def __init__(self, parent, **kwargs):
+        self.var = kwargs.pop('textvariable', tk.StringVar())
+        super().__init__(
+            parent,
+            textvariable=self.var,
+            bg=Theme.BG_TERTIARY,
+            fg=Theme.TEXT_PRIMARY,
+            insertbackground=Theme.ACCENT_BLUE,
+            relief='flat',
+            highlightthickness=1,
+            highlightbackground=Theme.BORDER_DEFAULT,
+            highlightcolor=Theme.BORDER_FOCUS,
+            font=(Theme.FONT_MONO, 10),
+            **kwargs
+        )
+        self.bind('<FocusIn>', self._on_focus_in)
+        self.bind('<FocusOut>', self._on_focus_out)
+
+    def _on_focus_in(self, event):
+        self.configure(highlightbackground=Theme.BORDER_FOCUS)
+
+    def _on_focus_out(self, event):
+        self.configure(highlightbackground=Theme.BORDER_DEFAULT)
+
+    def set_error(self, is_error: bool):
+        """Visual feedback for validation errors."""
+        if is_error:
+            self.configure(highlightbackground=Theme.ACCENT_RED, highlightcolor=Theme.ACCENT_RED)
+        else:
+            self.configure(highlightbackground=Theme.BORDER_DEFAULT, highlightcolor=Theme.BORDER_FOCUS)
+
+
+class Card(tk.Frame):
+    """A styled card container with optional title."""
+
+    def __init__(self, parent, title: str = None, **kwargs):
+        super().__init__(parent, bg=Theme.BG_SECONDARY, **kwargs)
+
+        self.configure(
+            highlightthickness=1,
+            highlightbackground=Theme.BORDER_MUTED,
+            highlightcolor=Theme.BORDER_MUTED,
+        )
+
+        if title:
+            title_frame = tk.Frame(self, bg=Theme.BG_SECONDARY)
+            title_frame.pack(fill='x', padx=12, pady=(12, 8))
+
+            tk.Label(
+                title_frame,
+                text=title,
+                font=(Theme.FONT_FAMILY, 11, 'bold'),
+                fg=Theme.TEXT_PRIMARY,
+                bg=Theme.BG_SECONDARY
+            ).pack(side='left')
+
+        self.content = tk.Frame(self, bg=Theme.BG_SECONDARY)
+        self.content.pack(fill='both', expand=True, padx=12, pady=(0, 12))
+
+
+class MetricDisplay(tk.Frame):
+    """A styled metric display widget."""
+
+    def __init__(self, parent, label: str, initial_value: str = "-", **kwargs):
+        super().__init__(parent, bg=Theme.BG_SECONDARY, **kwargs)
+
+        tk.Label(
+            self,
+            text=label,
+            font=(Theme.FONT_FAMILY, 9),
+            fg=Theme.TEXT_SECONDARY,
+            bg=Theme.BG_SECONDARY
+        ).pack(anchor='w')
+
+        self.value_label = tk.Label(
+            self,
+            text=initial_value,
+            font=(Theme.FONT_FAMILY, 16, 'bold'),
+            fg=Theme.ACCENT_BLUE,
+            bg=Theme.BG_SECONDARY
+        )
+        self.value_label.pack(anchor='w', pady=(2, 0))
+
+    def set_value(self, value: str, color: str = None):
+        self.value_label.configure(text=value)
+        if color:
+            self.value_label.configure(fg=color)
+
+
 class OptionsApproximatorGUI:
-    def __init__(self, root):
+    """Main application class for the Options Function Approximator."""
+
+    def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Options Function Approximator - MSDOS Terminal")
+        self.root.title("Options Function Approximator")
+        self.root.configure(bg=Theme.BG_DARK)
 
-        # Auto-size to screen (fullscreen)
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        self.root.geometry(f"{screen_width}x{screen_height}")
-        self.root.state("zoomed")  # Maximize on Windows
+        # Configure for fullscreen with proper sizing
+        self.root.state('zoomed')
+        self.root.minsize(1200, 800)
 
-        self.root.configure(bg=ModernStyle.BG_PRIMARY)
-
-        # Store current approximator and results
+        # Application state
         self.approximator: Optional[OptionsFunctionApproximator] = None
-        self.current_function: Optional[callable] = None
+        self.current_function: Optional[Callable] = None
         self.approximation_error: Optional[Dict[str, float]] = None
         self.premium_details: Optional[Dict[str, Any]] = None
         self.greeks: Optional[Dict[str, float]] = None
-
-        # Threading control
-        self.calculation_thread: Optional[threading.Thread] = None
         self.is_calculating = False
+        self.calculation_thread: Optional[threading.Thread] = None
 
-        # Configure styles
-        self.setup_styles()
-        self.setup_ui()
+        # Initialize
+        Theme.configure_matplotlib()
+        self._setup_styles()
+        self._build_ui()
 
-        # Bind window close event
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        # Bind events
+        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+        self.root.bind('<Control-e>', lambda e: self._export_results())
+        self.root.bind('<Control-r>', lambda e: self._calculate_approximation())
 
-    def setup_styles(self):
-        """Configure Modern Professional Finance Tool styling."""
+    def _setup_styles(self):
+        """Configure ttk styles."""
         style = ttk.Style()
-        style.theme_use("clam")
+        style.theme_use('clam')
 
-        # Modern font family
-        font_family = ("Segoe UI", "Helvetica Neue", "Arial", "sans-serif")
-        font_mono = ("Consolas", "Courier New", "monospace")
+        # Notebook tabs
+        style.configure('TNotebook', background=Theme.BG_DARK, borderwidth=0)
+        style.configure('TNotebook.Tab',
+            background=Theme.BG_SECONDARY,
+            foreground=Theme.TEXT_SECONDARY,
+            padding=[16, 8],
+            font=(Theme.FONT_FAMILY, 9)
+        )
+        style.map('TNotebook.Tab',
+            background=[('selected', Theme.BG_PRIMARY)],
+            foreground=[('selected', Theme.ACCENT_BLUE)]
+        )
 
-        # Base frame styling
-        style.configure(
-            "TFrame",
-            background=ModernStyle.BG_PRIMARY,
+        # Treeview
+        style.configure('Treeview',
+            background=Theme.BG_PRIMARY,
+            foreground=Theme.TEXT_PRIMARY,
+            fieldbackground=Theme.BG_PRIMARY,
             borderwidth=0,
+            font=(Theme.FONT_MONO, 9)
         )
-        style.configure(
-            "TLabel",
-            background=ModernStyle.BG_PRIMARY,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            font=font_family,
+        style.configure('Treeview.Heading',
+            background=Theme.BG_SECONDARY,
+            foreground=Theme.TEXT_PRIMARY,
+            font=(Theme.FONT_FAMILY, 9, 'bold')
+        )
+        style.map('Treeview',
+            background=[('selected', Theme.BG_HOVER)],
+            foreground=[('selected', Theme.TEXT_PRIMARY)]
         )
 
-        # Modern button styling (compact)
-        style.configure(
-            "TButton",
-            background=ModernStyle.BG_SECONDARY,
-            foreground=ModernStyle.TEXT_PRIMARY,
+        # Scrollbar
+        style.configure('TScrollbar',
+            background=Theme.BG_SECONDARY,
+            troughcolor=Theme.BG_PRIMARY,
             borderwidth=0,
-            relief="flat",
-            padding=(8, 6),
-            font=(font_family[0], 8),
-        )
-        style.map(
-            "TButton",
-            background=[
-                ("active", ModernStyle.BG_ACCENT),
-                ("pressed", ModernStyle.BG_HIGHLIGHT),
-            ],
+            arrowcolor=Theme.TEXT_SECONDARY
         )
 
-        # Primary action button (modern blue, compact)
-        style.configure(
-            "Accent.TButton",
-            background=ModernStyle.ACCENT_PRIMARY,
-            foreground="#ffffff",
-            font=(font_family[0], 9, "bold"),
-            padding=(16, 10),
-            borderwidth=0,
-            relief="flat",
-        )
-        style.map(
-            "Accent.TButton",
-            background=[
-                ("active", "#2563eb"),
-                ("pressed", "#1d4ed8"),
-            ],
-        )
+    def _build_ui(self):
+        """Build the main user interface."""
+        # Main container
+        main_container = tk.Frame(self.root, bg=Theme.BG_DARK)
+        main_container.pack(fill='both', expand=True)
 
-        # Modern card-style label frames (compact)
-        style.configure(
-            "TLabelframe",
-            background=ModernStyle.BG_CARD,
-            borderwidth=1,
-            relief="flat",
-            bordercolor=ModernStyle.BORDER_COLOR,
-        )
-        style.configure(
-            "TLabelframe.Label",
-            background=ModernStyle.BG_CARD,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            font=(font_family[0], 9, "bold"),
-        )
+        # Header/Toolbar
+        self._build_header(main_container)
 
-        # Modern input fields (compact)
-        style.configure(
-            "TEntry",
-            fieldbackground=ModernStyle.BG_INPUT,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            borderwidth=1,
-            padding=(6, 4),
-            insertcolor=ModernStyle.ACCENT_PRIMARY,
-            relief="flat",
-            font=font_mono,
-        )
-        style.map(
-            "TEntry",
-            fieldbackground=[("focus", ModernStyle.BG_ACCENT)],
-            bordercolor=[("focus", ModernStyle.BORDER_ACTIVE)],
-        )
+        # Content area with sidebar and main panel
+        content = tk.Frame(main_container, bg=Theme.BG_DARK)
+        content.pack(fill='both', expand=True, padx=8, pady=(0, 8))
 
-        # Modern radio buttons
-        style.configure(
-            "TRadiobutton",
-            background=ModernStyle.BG_CARD,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            font=font_family,
-        )
-        style.map(
-            "TRadiobutton",
-            background=[("active", ModernStyle.BG_CARD)],
-            foreground=[("selected", ModernStyle.ACCENT_PRIMARY)],
-        )
+        # Left sidebar (controls)
+        sidebar = tk.Frame(content, bg=Theme.BG_DARK, width=340)
+        sidebar.pack(side='left', fill='y', padx=(0, 8))
+        sidebar.pack_propagate(False)
+        self._build_sidebar(sidebar)
 
-        # Modern checkboxes
-        style.configure(
-            "TCheckbutton",
-            background=ModernStyle.BG_CARD,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            font=font_family,
-        )
-        style.map(
-            "TCheckbutton",
-            background=[("active", ModernStyle.BG_CARD)],
-            foreground=[("selected", ModernStyle.ACCENT_PRIMARY)],
-        )
+        # Main panel (chart and results)
+        main_panel = tk.Frame(content, bg=Theme.BG_DARK)
+        main_panel.pack(side='left', fill='both', expand=True)
+        self._build_main_panel(main_panel)
 
-        # Modern tabs
-        style.configure(
-            "TNotebook",
-            background=ModernStyle.BG_PRIMARY,
-            borderwidth=0,
-        )
-        style.configure(
-            "TNotebook.Tab",
-            background=ModernStyle.BG_SECONDARY,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            padding=[12, 8],
-            borderwidth=0,
-            font=(font_family[0], 8),
-        )
-        style.map(
-            "TNotebook.Tab",
-            background=[
-                ("selected", ModernStyle.BG_CARD),
-                ("active", ModernStyle.BG_ACCENT),
-            ],
-            foreground=[
-                ("selected", ModernStyle.ACCENT_PRIMARY),
-                ("active", ModernStyle.TEXT_PRIMARY),
-            ],
-            expand=[("selected", [1, 1, 1, 0])],
-        )
+    def _build_header(self, parent):
+        """Build the application header with toolbar."""
+        header = tk.Frame(parent, bg=Theme.BG_PRIMARY, height=56)
+        header.pack(fill='x', padx=8, pady=8)
+        header.pack_propagate(False)
 
-        # Modern table styling
-        style.configure(
-            "Treeview",
-            background=ModernStyle.BG_CARD,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            fieldbackground=ModernStyle.BG_CARD,
-            borderwidth=0,
-            font=font_mono,
-        )
-        style.configure(
-            "Treeview.Heading",
-            background=ModernStyle.BG_SECONDARY,
-            foreground=ModernStyle.TEXT_PRIMARY,
-            font=(font_family[0], 9, "bold"),
-            relief="flat",
-            borderwidth=0,
-        )
-        style.map(
-            "Treeview",
-            background=[("selected", ModernStyle.ACCENT_PRIMARY)],
-            foreground=[("selected", "#ffffff")],
-        )
-
-        # Modern scrollbars
-        style.configure(
-            "TScrollbar",
-            background=ModernStyle.BG_SECONDARY,
-            troughcolor=ModernStyle.BG_PRIMARY,
-            borderwidth=0,
-            arrowcolor=ModernStyle.TEXT_SECONDARY,
-            darkcolor=ModernStyle.BG_SECONDARY,
-            lightcolor=ModernStyle.BG_SECONDARY,
-            width=12,
-        )
-
-        # Professional matplotlib theme
-        plt.style.use("dark_background")
-        plt.rcParams.update(
-            {
-                "figure.facecolor": ModernStyle.PLOT_BG,
-                "axes.facecolor": ModernStyle.BG_CARD,
-                "axes.edgecolor": ModernStyle.BORDER_COLOR,
-                "axes.labelcolor": ModernStyle.TEXT_PRIMARY,
-                "xtick.color": ModernStyle.CHART_AXIS,
-                "ytick.color": ModernStyle.CHART_AXIS,
-                "text.color": ModernStyle.TEXT_PRIMARY,
-                "grid.color": ModernStyle.CHART_GRID,
-                "grid.alpha": 0.3,
-                "font.family": "sans-serif",
-                "font.sans-serif": ["Segoe UI", "Helvetica Neue", "Arial"],
-            }
-        )
-
-    def setup_ui(self):
-        """Set up the user interface."""
-        # Create main paned window (compact)
-        main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        main_paned.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
-
-        # Left panel: Controls
-        left_frame = ttk.Frame(main_paned, width=420)
-        left_frame.configure(style="TFrame")
-        main_paned.add(left_frame, weight=1)
-
-        # Right panel: Results (split vertically)
-        right_paned = ttk.PanedWindow(main_paned, orient=tk.VERTICAL)
-        main_paned.add(right_paned, weight=3)
-
-        # Top right: Plot (larger)
-        plot_frame = ttk.Frame(right_paned)
-        right_paned.add(plot_frame, weight=3)
-
-        # Bottom right: Results display (smaller)
-        results_frame = ttk.Frame(right_paned)
-        right_paned.add(results_frame, weight=1)
-
-        self.setup_controls(left_frame)
-        self.setup_plot(plot_frame)
-        self.setup_results_display(results_frame)
-
-    def setup_controls(self, parent):
-        """Set up control panel with modern professional styling."""
-        # Modern header card (compact)
-        title_frame = tk.Frame(parent, bg=ModernStyle.BG_CARD, relief="flat")
-        title_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+        # Left side - Title and status
+        left_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
+        left_frame.pack(side='left', fill='y', padx=16)
 
         title_label = tk.Label(
-            title_frame,
+            left_frame,
             text="Options Function Approximator",
-            font=("Segoe UI", 14, "bold"),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
+            font=(Theme.FONT_FAMILY, 14, 'bold'),
+            fg=Theme.TEXT_PRIMARY,
+            bg=Theme.BG_PRIMARY
         )
-        title_label.pack(pady=(8, 2))
+        title_label.pack(side='left', pady=12)
 
-        subtitle_label = tk.Label(
-            title_frame,
-            text="Decompose complex payoffs into vanilla options",
-            font=("Segoe UI", 8),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_SECONDARY,
+        # Separator
+        sep = tk.Frame(left_frame, bg=Theme.BORDER_DEFAULT, width=1)
+        sep.pack(side='left', fill='y', padx=16, pady=12)
+
+        # Status indicator
+        self.status_dot = tk.Canvas(left_frame, width=10, height=10, bg=Theme.BG_PRIMARY, highlightthickness=0)
+        self.status_dot.pack(side='left', pady=12)
+        self.status_dot.create_oval(2, 2, 8, 8, fill=Theme.ACCENT_GREEN, outline='')
+
+        self.status_label = tk.Label(
+            left_frame,
+            text="Ready",
+            font=(Theme.FONT_FAMILY, 10),
+            fg=Theme.TEXT_SECONDARY,
+            bg=Theme.BG_PRIMARY
         )
-        subtitle_label.pack(pady=(0, 8))
+        self.status_label.pack(side='left', padx=(6, 0), pady=12)
 
-        # Function selection - Modern card (compact)
-        func_frame = ttk.LabelFrame(parent, text="Function Selection", padding=10)
-        func_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+        # Right side - Action buttons
+        right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
+        right_frame.pack(side='right', fill='y', padx=16)
 
-        self.function_var = tk.StringVar(value="sin")
-        functions = {
-            "sin": ("sin(x)", lambda x: np.sin(x)),
-            "cos": ("cos(x)", lambda x: np.cos(x)),
-            "sigmoid": ("Sigmoid", lambda x: sigmoid(x, center=5.0, scale=2.0)),
-            "gaussian": ("Gaussian PDF", lambda x: gaussian_pdf(x, mu=5.0, sigma=1.0)),
-            "polynomial": ("x³ - 2x² + x", lambda x: x**3 - 2 * x**2 + x),
-            "bull_spread": (
-                "Bull Spread",
-                lambda x: np.maximum(x - 90, 0) - np.maximum(x - 110, 0),
-            ),
-            "complex": ("Complex Payoff", self.complex_payoff_function),
+        # Export button
+        export_btn = tk.Button(
+            right_frame,
+            text="Export",
+            font=(Theme.FONT_FAMILY, 9),
+            fg=Theme.TEXT_PRIMARY,
+            bg=Theme.BG_TERTIARY,
+            activebackground=Theme.BG_TERTIARY,
+            activeforeground=Theme.TEXT_PRIMARY,
+            highlightthickness=0,
+            highlightbackground=Theme.BG_TERTIARY,
+            bd=0,
+            padx=16,
+            pady=6,
+            command=self._export_results
+        )
+        export_btn.pack(side='left', pady=12, padx=(0, 8))
+
+        # Calculate button (primary action)
+        self.calculate_btn = tk.Button(
+            right_frame,
+            text="Calculate",
+            font=(Theme.FONT_FAMILY, 9, 'bold'),
+            fg='#ffffff',
+            bg=Theme.ACCENT_BLUE,
+            activebackground=Theme.ACCENT_BLUE,
+            activeforeground='#ffffff',
+            highlightthickness=0,
+            highlightbackground=Theme.ACCENT_BLUE,
+            bd=0,
+            padx=20,
+            pady=6,
+            command=self._calculate_approximation
+        )
+        self.calculate_btn.pack(side='left', pady=12)
+
+    def _build_sidebar(self, parent):
+        """Build the left sidebar with controls."""
+        # Scrollable container
+        canvas = tk.Canvas(parent, bg=Theme.BG_DARK, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient='vertical', command=canvas.yview)
+        scrollable = tk.Frame(canvas, bg=Theme.BG_DARK)
+
+        scrollable.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.create_window((0, 0), window=scrollable, anchor='nw', width=332)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), 'units')
+        canvas.bind_all('<MouseWheel>', _on_mousewheel)
+
+        # Function Selection Card
+        func_card = Card(scrollable, title="Target Function")
+        func_card.pack(fill='x', pady=(0, 8))
+
+        self.function_var = tk.StringVar(value='sin')
+        self.functions = {
+            'sin': ('Sine Wave', 'sin(x)', lambda x: np.sin(x)),
+            'cos': ('Cosine Wave', 'cos(x)', lambda x: np.cos(x)),
+            'sigmoid': ('Sigmoid', '1/(1+e^(-x))', lambda x: sigmoid(x, center=5.0, scale=2.0)),
+            'gaussian': ('Gaussian PDF', 'Normal distribution', lambda x: gaussian_pdf(x, mu=5.0, sigma=1.0)),
+            'polynomial': ('Polynomial', 'x³ - 2x² + x', lambda x: x**3 - 2*x**2 + x),
+            'bull_spread': ('Bull Spread', 'Call spread payoff', lambda x: np.maximum(x - 90, 0) - np.maximum(x - 110, 0)),
+            'butterfly': ('Butterfly', 'Butterfly spread', lambda x: np.maximum(x - 95, 0) - 2*np.maximum(x - 100, 0) + np.maximum(x - 105, 0)),
         }
 
-        self.function_dict = functions
+        for key, (name, _, _) in self.functions.items():
+            frame = tk.Frame(func_card.content, bg=Theme.BG_SECONDARY)
+            frame.pack(fill='x', pady=2)
 
-        func_container = tk.Frame(func_frame, bg=ModernStyle.BG_CARD)
-        func_container.pack(fill=tk.X)
-
-        for key, (label, _) in functions.items():
-            rb = ttk.Radiobutton(
-                func_container,
-                text=label,
+            rb = tk.Radiobutton(
+                frame,
+                text=name,
                 variable=self.function_var,
                 value=key,
-                command=self.on_function_change,
+                bg=Theme.BG_SECONDARY,
+                fg=Theme.TEXT_PRIMARY,
+                selectcolor=Theme.BG_PRIMARY,
+                activebackground=Theme.BG_SECONDARY,
+                activeforeground=Theme.TEXT_PRIMARY,
+                highlightthickness=0,
+                font=(Theme.FONT_FAMILY, 10),
+                anchor='w',
+                command=self._on_function_change
             )
-            rb.pack(anchor=tk.W, pady=1)
+            rb.pack(side='left', fill='x', expand=True)
 
-        # Custom function input - Modern styling (compact)
-        custom_label = tk.Label(
-            func_frame,
-            text="Custom Function (Python)",
-            font=("Segoe UI", 8, "bold"),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-        )
-        custom_label.pack(anchor=tk.W, pady=(8, 4))
+        # Custom function
+        tk.Label(
+            func_card.content,
+            text="Custom Function (Python expr)",
+            font=(Theme.FONT_FAMILY, 9),
+            fg=Theme.TEXT_SECONDARY,
+            bg=Theme.BG_SECONDARY
+        ).pack(anchor='w', pady=(12, 4))
 
-        self.custom_func_entry = tk.Text(
-            func_frame,
+        self.custom_entry = tk.Text(
+            func_card.content,
             height=2,
-            width=40,
-            wrap=tk.WORD,
-            bg=ModernStyle.BG_INPUT,
-            fg=ModernStyle.TEXT_PRIMARY,
-            insertbackground=ModernStyle.ACCENT_PRIMARY,
-            relief="flat",
-            borderwidth=1,
-            selectbackground=ModernStyle.ACCENT_PRIMARY,
-            selectforeground="#ffffff",
-            font=("Consolas", 8),
-            padx=6,
+            bg=Theme.BG_TERTIARY,
+            fg=Theme.TEXT_PRIMARY,
+            insertbackground=Theme.ACCENT_BLUE,
+            relief='flat',
+            font=(Theme.FONT_MONO, 9),
+            padx=8,
+            pady=6
+        )
+        self.custom_entry.pack(fill='x')
+        self.custom_entry.insert('1.0', 'np.sin(x) + 0.5*x')
+
+        custom_btn = tk.Button(
+            func_card.content,
+            text="Use Custom",
+            font=(Theme.FONT_FAMILY, 9),
+            fg=Theme.TEXT_PRIMARY,
+            bg=Theme.BG_TERTIARY,
+            activebackground=Theme.BG_TERTIARY,
+            activeforeground=Theme.TEXT_PRIMARY,
+            highlightthickness=0,
+            highlightbackground=Theme.BG_TERTIARY,
+            bd=0,
+            padx=12,
             pady=4,
+            command=self._use_custom_function
         )
-        self.custom_func_entry.pack(fill=tk.X, pady=(0, 6))
-        self.custom_func_entry.insert("1.0", "np.sin(x) + 0.5*x")
+        custom_btn.pack(anchor='e', pady=(8, 0))
 
-        custom_btn = ttk.Button(
-            func_frame,
-            text="Use Custom Function",
-            command=self.use_custom_function,
-        )
-        custom_btn.pack(pady=(0, 0))
+        # Price Range Card
+        range_card = Card(scrollable, title="Price Range")
+        range_card.pack(fill='x', pady=(0, 8))
 
-        # Price range - Modern card (compact)
-        range_frame = ttk.LabelFrame(parent, text="Price Range & Options", padding=10)
-        range_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
-
-        self.create_labeled_entry(range_frame, "Min Price", "min_price", "0", 0)
-        self.create_labeled_entry(range_frame, "Max Price", "max_price", "10", 1)
-        self.create_labeled_entry(
-            range_frame, "Number of Options", "n_options", "15", 2
-        )
-
-        # Pricing parameters - Modern card (compact)
-        pricing_frame = ttk.LabelFrame(parent, text="Pricing Parameters", padding=10)
-        pricing_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
-
-        params = [
-            ("Current Stock Price (S₀)", "S0", "100.0"),
-            ("Risk-free Rate (r)", "r", "0.05"),
-            ("Time to Expiration (T, years)", "T", "0.25"),
-            ("Volatility (σ)", "sigma", "0.2"),
+        self.range_vars = {}
+        range_params = [
+            ('min_price', 'Minimum Price', '0'),
+            ('max_price', 'Maximum Price', '10'),
+            ('n_options', 'Number of Options', '15'),
         ]
 
-        # Initialize pricing_vars before creating entries
-        if not hasattr(self, "pricing_vars"):
-            self.pricing_vars = {}
+        for key, label, default in range_params:
+            frame = tk.Frame(range_card.content, bg=Theme.BG_SECONDARY)
+            frame.pack(fill='x', pady=4)
 
-        for i, (label, key, default) in enumerate(params):
-            self.create_labeled_entry(pricing_frame, label, key, default, i)
+            tk.Label(
+                frame, text=label,
+                font=(Theme.FONT_FAMILY, 9),
+                fg=Theme.TEXT_SECONDARY,
+                bg=Theme.BG_SECONDARY,
+                width=18,
+                anchor='w'
+            ).pack(side='left')
 
-        # Basis function options - Modern card (compact)
-        basis_frame = ttk.LabelFrame(parent, text="Basis Functions", padding=10)
-        basis_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+            var = tk.StringVar(value=default)
+            self.range_vars[key] = var
+
+            entry = StyledEntry(frame, textvariable=var, width=12)
+            entry.pack(side='right')
+
+        # Pricing Parameters Card
+        pricing_card = Card(scrollable, title="Pricing Parameters")
+        pricing_card.pack(fill='x', pady=(0, 8))
+
+        self.pricing_vars = {}
+        pricing_params = [
+            ('S0', 'Stock Price (S₀)', '100.0'),
+            ('r', 'Risk-free Rate (r)', '0.05'),
+            ('T', 'Time to Expiry (T)', '0.25'),
+            ('sigma', 'Volatility (σ)', '0.2'),
+        ]
+
+        for key, label, default in pricing_params:
+            frame = tk.Frame(pricing_card.content, bg=Theme.BG_SECONDARY)
+            frame.pack(fill='x', pady=4)
+
+            tk.Label(
+                frame, text=label,
+                font=(Theme.FONT_FAMILY, 9),
+                fg=Theme.TEXT_SECONDARY,
+                bg=Theme.BG_SECONDARY,
+                width=18,
+                anchor='w'
+            ).pack(side='left')
+
+            var = tk.StringVar(value=default)
+            self.pricing_vars[key] = var
+
+            entry = StyledEntry(frame, textvariable=var, width=12)
+            entry.pack(side='right')
+
+        # Basis Functions Card
+        basis_card = Card(scrollable, title="Basis Functions")
+        basis_card.pack(fill='x', pady=(0, 8))
 
         self.use_calls_var = tk.BooleanVar(value=True)
         self.use_puts_var = tk.BooleanVar(value=True)
         self.use_stock_var = tk.BooleanVar(value=True)
 
-        ttk.Checkbutton(
-            basis_frame, text="Use Call Options", variable=self.use_calls_var
-        ).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(
-            basis_frame, text="Use Put Options", variable=self.use_puts_var
-        ).pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(
-            basis_frame, text="Use Stock Position", variable=self.use_stock_var
-        ).pack(anchor=tk.W, pady=2)
+        for var, text in [
+            (self.use_calls_var, 'Call Options'),
+            (self.use_puts_var, 'Put Options'),
+            (self.use_stock_var, 'Stock Position'),
+        ]:
+            cb = tk.Checkbutton(
+                basis_card.content,
+                text=text,
+                variable=var,
+                font=(Theme.FONT_FAMILY, 10),
+                fg=Theme.TEXT_PRIMARY,
+                bg=Theme.BG_SECONDARY,
+                selectcolor=Theme.BG_TERTIARY,
+                activebackground=Theme.BG_SECONDARY,
+                activeforeground=Theme.ACCENT_BLUE,
+                highlightthickness=0
+            )
+            cb.pack(anchor='w', pady=2)
 
-        # Calculate button - Modern primary action (compact)
-        button_frame = tk.Frame(parent, bg=ModernStyle.BG_PRIMARY)
-        button_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+    def _build_main_panel(self, parent):
+        """Build the main content panel with chart and results."""
+        # Chart area (top)
+        chart_frame = tk.Frame(parent, bg=Theme.BG_PRIMARY)
+        chart_frame.pack(fill='both', expand=True, pady=(0, 8))
 
-        self.calculate_btn = ttk.Button(
-            button_frame,
-            text="Calculate Approximation",
-            command=self.calculate_approximation,
-            style="Accent.TButton",
-        )
-        self.calculate_btn.pack(fill=tk.X, pady=(0, 4))
+        # Chart header
+        chart_header = tk.Frame(chart_frame, bg=Theme.BG_PRIMARY)
+        chart_header.pack(fill='x', padx=16, pady=(12, 0))
 
-        # Progress indicator
-        self.progress_var = tk.StringVar(value="")
-        self.progress_label = tk.Label(
-            button_frame,
-            textvariable=self.progress_var,
-            font=("Segoe UI", 8),
-            bg=ModernStyle.BG_PRIMARY,
-            fg=ModernStyle.TEXT_SECONDARY,
-        )
-        self.progress_label.pack(pady=2)
-
-        # Status label
-        self.status_var = tk.StringVar(value="Ready")
-        self.status_label = tk.Label(
-            button_frame,
-            textvariable=self.status_var,
-            font=("Segoe UI", 9, "bold"),
-            bg=ModernStyle.BG_PRIMARY,
-            fg=ModernStyle.STATUS_SUCCESS,
-        )
-        self.status_label.pack(pady=2)
-
-    def create_labeled_entry(self, parent, label_text, var_key, default_value, row):
-        """Helper to create modern labeled entry widgets (compact)."""
-        label = tk.Label(
-            parent,
-            text=label_text,
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-            font=("Segoe UI", 8),
-        )
-        label.grid(row=row, column=0, sticky=tk.W, pady=3, padx=(0, 8))
-
-        var = tk.StringVar(value=default_value)
-        if var_key in ["S0", "r", "T", "sigma"]:
-            self.pricing_vars[var_key] = var
-        elif var_key == "min_price":
-            self.min_price_var = var
-        elif var_key == "max_price":
-            self.max_price_var = var
-        elif var_key == "n_options":
-            self.n_options_var = var
-
-        entry = ttk.Entry(parent, textvariable=var, width=18)
-        entry.grid(row=row, column=1, sticky=tk.EW, padx=(0, 0), pady=3)
-        parent.columnconfigure(1, weight=1)
-
-    def setup_plot(self, parent):
-        """Set up the modern professional plot area (larger, compact padding)."""
-        plot_container = tk.Frame(parent, bg=ModernStyle.BG_CARD, relief="flat")
-        plot_container.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
-
-        # Modern plot header (compact)
-        plot_header = tk.Frame(plot_container, bg=ModernStyle.BG_CARD)
-        plot_header.pack(fill=tk.X, padx=8, pady=(8, 4))
-
-        plot_title = tk.Label(
-            plot_header,
+        tk.Label(
+            chart_header,
             text="Function Approximation",
-            font=("Segoe UI", 12, "bold"),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-        )
-        plot_title.pack(side=tk.LEFT)
+            font=(Theme.FONT_FAMILY, 12, 'bold'),
+            fg=Theme.TEXT_PRIMARY,
+            bg=Theme.BG_PRIMARY
+        ).pack(side='left')
 
-        # Matplotlib figure (Modern professional theme - larger)
-        self.fig = Figure(figsize=(12, 7), dpi=110, facecolor=ModernStyle.BG_CARD)
-        self.ax = self.fig.add_subplot(111, facecolor=ModernStyle.BG_CARD)
-        self.ax.set_xlabel("Stock Price", fontsize=11, color=ModernStyle.TEXT_PRIMARY)
-        self.ax.set_ylabel(
-            "Function Value", fontsize=11, color=ModernStyle.TEXT_PRIMARY
-        )
-        self.ax.set_title(
-            "Target Function vs. Options Approximation",
-            fontsize=12,
-            fontweight="bold",
-            color=ModernStyle.TEXT_PRIMARY,
-            pad=12,
-        )
-        self.ax.tick_params(colors=ModernStyle.CHART_AXIS, labelsize=9)
-        self.ax.grid(
-            True, alpha=0.2, linestyle="-", color=ModernStyle.CHART_GRID, linewidth=0.5
-        )
-        self.ax.spines["bottom"].set_color(ModernStyle.BORDER_COLOR)
-        self.ax.spines["top"].set_color(ModernStyle.BORDER_COLOR)
-        self.ax.spines["right"].set_color(ModernStyle.BORDER_COLOR)
-        self.ax.spines["left"].set_color(ModernStyle.BORDER_COLOR)
+        # Chart
+        self.fig = Figure(figsize=(10, 5), dpi=100, facecolor=Theme.CHART_BG)
+        self.ax = self.fig.add_subplot(111, facecolor=Theme.BG_PRIMARY)
+        self._style_axes(self.ax)
 
-        self.canvas = FigureCanvasTkAgg(self.fig, plot_container)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.canvas = FigureCanvasTkAgg(self.fig, chart_frame)
+        self.canvas.get_tk_widget().pack(fill='both', expand=True, padx=8, pady=8)
 
-    def setup_results_display(self, parent):
-        """Set up structured results display with tabs."""
-        # Create notebook for tabs
-        self.results_notebook = ttk.Notebook(parent)
-        self.results_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Matplotlib toolbar
+        toolbar_frame = tk.Frame(chart_frame, bg=Theme.BG_PRIMARY)
+        toolbar_frame.pack(fill='x', padx=8)
+        self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+        self.toolbar.configure(bg=Theme.BG_PRIMARY)
+        self.toolbar.update()
 
-        # Tab 1: Summary & Metrics
-        summary_frame = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(summary_frame, text="Summary & Metrics")
-        self.setup_summary_tab(summary_frame)
+        # Results area (bottom)
+        results_frame = tk.Frame(parent, bg=Theme.BG_DARK, height=280)
+        results_frame.pack(fill='x')
+        results_frame.pack_propagate(False)
 
-        # Tab 2: Cost Breakdown
-        cost_frame = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(cost_frame, text="Cost Breakdown")
-        self.setup_cost_tab(cost_frame)
+        # Results notebook
+        self.notebook = ttk.Notebook(results_frame)
+        self.notebook.pack(fill='both', expand=True)
 
-        # Tab 3: Portfolio Greeks
-        greeks_frame = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(greeks_frame, text="Portfolio Greeks")
-        self.setup_greeks_tab(greeks_frame)
+        self._build_summary_tab()
+        self._build_options_tab()
+        self._build_greeks_tab()
+        self._build_details_tab()
 
-        # Tab 4: Detailed Output (for compatibility)
-        detail_frame = ttk.Frame(self.results_notebook)
-        self.results_notebook.add(detail_frame, text="Detailed Output")
-        self.setup_detail_tab(detail_frame)
+    def _style_axes(self, ax):
+        """Apply consistent styling to axes."""
+        ax.set_xlabel('Stock Price', fontsize=10, color=Theme.TEXT_PRIMARY)
+        ax.set_ylabel('Value', fontsize=10, color=Theme.TEXT_PRIMARY)
+        ax.tick_params(colors=Theme.TEXT_SECONDARY, labelsize=9)
+        ax.grid(True, alpha=0.2, color=Theme.CHART_GRID)
+        for spine in ax.spines.values():
+            spine.set_color(Theme.BORDER_DEFAULT)
 
-    def setup_summary_tab(self, parent):
-        """Set up summary and metrics tab."""
-        # Create scrollable frame
-        canvas = tk.Canvas(parent, bg=ModernStyle.BG_PRIMARY)
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg=ModernStyle.BG_PRIMARY)
+    def _build_summary_tab(self):
+        """Build the summary metrics tab."""
+        frame = tk.Frame(self.notebook, bg=Theme.BG_PRIMARY)
+        self.notebook.add(frame, text='Summary')
 
-        scrollable_frame.bind(
-            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        # Metrics row
+        metrics_frame = tk.Frame(frame, bg=Theme.BG_PRIMARY)
+        metrics_frame.pack(fill='x', padx=16, pady=16)
 
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        # Approximation Quality - Modern card (compact)
-        quality_frame = tk.LabelFrame(
-            scrollable_frame,
-            text="Approximation Quality",
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-            font=("Segoe UI", 9, "bold"),
-            padx=10,
-            pady=10,
-        )
-        quality_frame.pack(fill=tk.X, padx=8, pady=6)
-
-        self.mse_label = tk.Label(
-            quality_frame,
-            text="MSE: -",
-            font=("Segoe UI", 9),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-        )
-        self.mse_label.pack(anchor=tk.W, pady=2)
-
-        self.rmse_label = tk.Label(
-            quality_frame,
-            text="RMSE: -",
-            font=("Segoe UI", 9),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-        )
-        self.rmse_label.pack(anchor=tk.W, pady=2)
-
-        # Total Cost - Modern card (compact)
-        cost_frame = tk.LabelFrame(
-            scrollable_frame,
-            text="Total Portfolio Cost",
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-            font=("Segoe UI", 9, "bold"),
-            padx=10,
-            pady=10,
-        )
-        cost_frame.pack(fill=tk.X, padx=8, pady=6)
-
-        self.total_cost_label = tk.Label(
-            cost_frame,
-            text="Total Cost: $0.00",
-            font=("Segoe UI", 14, "bold"),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.ACCENT_PRIMARY,
-        )
-        self.total_cost_label.pack(pady=5)
-
-        # Portfolio Composition - Modern card (compact)
-        comp_frame = tk.LabelFrame(
-            scrollable_frame,
-            text="Portfolio Composition",
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-            font=("Segoe UI", 9, "bold"),
-            padx=10,
-            pady=10,
-        )
-        comp_frame.pack(fill=tk.X, padx=8, pady=6)
-
-        self.comp_label = tk.Label(
-            comp_frame,
-            text="No calculation performed yet.",
-            font=("Segoe UI", 8),
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-            justify=tk.LEFT,
-        )
-        self.comp_label.pack(anchor=tk.W, pady=2)
-
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-    def setup_cost_tab(self, parent):
-        """Set up cost breakdown tab with TreeView (compact)."""
-        # Create TreeView for options
-        tree_frame = tk.Frame(parent, bg=ModernStyle.BG_PRIMARY)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
-
-        # Call options tree
-        calls_label = tk.Label(
-            tree_frame,
-            text="Call Options",
-            font=("Segoe UI", 10, "bold"),
-            bg=ModernStyle.BG_PRIMARY,
-            fg=ModernStyle.ACCENT_SUCCESS,
-        )
-        calls_label.pack(anchor=tk.W, pady=(0, 4))
-
-        calls_tree_frame = tk.Frame(tree_frame, bg=ModernStyle.BG_PRIMARY)
-        calls_tree_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.calls_tree = ttk.Treeview(
-            calls_tree_frame,
-            columns=("Strike", "Weight", "Premium/Unit", "Total Cost"),
-            show="headings",
-            height=6,
-        )
-        self.calls_tree.heading("Strike", text="Strike")
-        self.calls_tree.heading("Weight", text="Weight")
-        self.calls_tree.heading("Premium/Unit", text="Premium/Unit")
-        self.calls_tree.heading("Total Cost", text="Total Cost")
-
-        for col in ("Strike", "Weight", "Premium/Unit", "Total Cost"):
-            self.calls_tree.column(col, width=120, anchor=tk.CENTER)
-
-        calls_scrollbar = ttk.Scrollbar(
-            calls_tree_frame, orient=tk.VERTICAL, command=self.calls_tree.yview
-        )
-        self.calls_tree.configure(yscrollcommand=calls_scrollbar.set)
-
-        self.calls_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        calls_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # Put options tree
-        puts_label = tk.Label(
-            tree_frame,
-            text="Put Options",
-            font=("Segoe UI", 10, "bold"),
-            bg=ModernStyle.BG_PRIMARY,
-            fg=ModernStyle.ACCENT_DANGER,
-        )
-        puts_label.pack(anchor=tk.W, pady=(8, 4))
-
-        puts_tree_frame = tk.Frame(tree_frame, bg=ModernStyle.BG_PRIMARY)
-        puts_tree_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.puts_tree = ttk.Treeview(
-            puts_tree_frame,
-            columns=("Strike", "Weight", "Premium/Unit", "Total Cost"),
-            show="headings",
-            height=6,
-        )
-        self.puts_tree.heading("Strike", text="Strike")
-        self.puts_tree.heading("Weight", text="Weight")
-        self.puts_tree.heading("Premium/Unit", text="Premium/Unit")
-        self.puts_tree.heading("Total Cost", text="Total Cost")
-
-        for col in ("Strike", "Weight", "Premium/Unit", "Total Cost"):
-            self.puts_tree.column(col, width=120, anchor=tk.CENTER)
-
-        puts_scrollbar = ttk.Scrollbar(
-            puts_tree_frame, orient=tk.VERTICAL, command=self.puts_tree.yview
-        )
-        self.puts_tree.configure(yscrollcommand=puts_scrollbar.set)
-
-        self.puts_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        puts_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def setup_greeks_tab(self, parent):
-        """Set up portfolio Greeks tab (compact)."""
-        greeks_container = tk.Frame(parent, bg=ModernStyle.BG_PRIMARY)
-        greeks_container.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-
-        # Create styled boxes for each Greek
-        greeks_data = [
-            ("Delta", "Price Sensitivity", "$ per $1 stock move"),
-            ("Gamma", "Delta Sensitivity", "Delta change per $1 stock move"),
-            ("Vega", "Volatility Sensitivity", "$ per 1% vol change"),
-            ("Theta", "Time Decay", "$ per day"),
+        # Create metric displays
+        self.metrics = {}
+        metrics_config = [
+            ('mse', 'Mean Squared Error'),
+            ('rmse', 'Root MSE'),
+            ('total_cost', 'Total Portfolio Cost'),
+            ('num_options', 'Total Options'),
         ]
 
-        self.greek_labels = {}
-        for i, (greek_name, description, units) in enumerate(greeks_data):
-            greek_frame = tk.LabelFrame(
-                greeks_container,
-                text=greek_name,
-                bg=ModernStyle.BG_CARD,
-                fg=ModernStyle.TEXT_PRIMARY,
-                font=("Segoe UI", 9, "bold"),
-                padx=10,
-                pady=10,
-                relief="flat",
-                borderwidth=1,
-            )
-            greek_frame.pack(fill=tk.X, pady=4)
+        for i, (key, label) in enumerate(metrics_config):
+            metric = MetricDisplay(metrics_frame, label)
+            metric.pack(side='left', padx=(0, 40))
+            self.metrics[key] = metric
 
-            desc_label = tk.Label(
-                greek_frame,
-                text=description,
-                font=("Segoe UI", 8),
-                bg=ModernStyle.BG_CARD,
-                fg=ModernStyle.TEXT_SECONDARY,
-            )
-            desc_label.pack(anchor=tk.W)
+    def _build_options_tab(self):
+        """Build the options breakdown tab."""
+        frame = tk.Frame(self.notebook, bg=Theme.BG_PRIMARY)
+        self.notebook.add(frame, text='Options Breakdown')
+
+        # Split into calls and puts
+        paned = tk.PanedWindow(frame, orient='horizontal', bg=Theme.BG_PRIMARY, sashwidth=4)
+        paned.pack(fill='both', expand=True, padx=8, pady=8)
+
+        # Calls section
+        calls_frame = tk.Frame(paned, bg=Theme.BG_PRIMARY)
+        paned.add(calls_frame)
+
+        tk.Label(
+            calls_frame,
+            text="Call Options",
+            font=(Theme.FONT_FAMILY, 10, 'bold'),
+            fg=Theme.ACCENT_GREEN,
+            bg=Theme.BG_PRIMARY
+        ).pack(anchor='w', padx=8, pady=(8, 4))
+
+        self.calls_tree = self._create_options_tree(calls_frame)
+
+        # Puts section
+        puts_frame = tk.Frame(paned, bg=Theme.BG_PRIMARY)
+        paned.add(puts_frame)
+
+        tk.Label(
+            puts_frame,
+            text="Put Options",
+            font=(Theme.FONT_FAMILY, 10, 'bold'),
+            fg=Theme.ACCENT_RED,
+            bg=Theme.BG_PRIMARY
+        ).pack(anchor='w', padx=8, pady=(8, 4))
+
+        self.puts_tree = self._create_options_tree(puts_frame)
+
+    def _create_options_tree(self, parent) -> ttk.Treeview:
+        """Create a styled treeview for options display."""
+        tree_frame = tk.Frame(parent, bg=Theme.BG_PRIMARY)
+        tree_frame.pack(fill='both', expand=True, padx=8, pady=(0, 8))
+
+        columns = ('Strike', 'Weight', 'Premium', 'Cost')
+        tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=6)
+
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=90, anchor='center')
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient='vertical', command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+
+        tree.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+        return tree
+
+    def _build_greeks_tab(self):
+        """Build the portfolio Greeks tab."""
+        frame = tk.Frame(self.notebook, bg=Theme.BG_PRIMARY)
+        self.notebook.add(frame, text='Portfolio Greeks')
+
+        greeks_frame = tk.Frame(frame, bg=Theme.BG_PRIMARY)
+        greeks_frame.pack(fill='x', padx=16, pady=16)
+
+        self.greek_displays = {}
+        greeks_config = [
+            ('delta', 'Delta', 'Price sensitivity'),
+            ('gamma', 'Gamma', 'Delta sensitivity'),
+            ('vega', 'Vega', 'Volatility sensitivity'),
+            ('theta', 'Theta', 'Time decay'),
+        ]
+
+        for key, name, desc in greeks_config:
+            card = tk.Frame(greeks_frame, bg=Theme.BG_SECONDARY, padx=16, pady=12)
+            card.pack(side='left', padx=(0, 12))
+
+            tk.Label(
+                card, text=name,
+                font=(Theme.FONT_FAMILY, 11, 'bold'),
+                fg=Theme.TEXT_PRIMARY,
+                bg=Theme.BG_SECONDARY
+            ).pack(anchor='w')
+
+            tk.Label(
+                card, text=desc,
+                font=(Theme.FONT_FAMILY, 8),
+                fg=Theme.TEXT_MUTED,
+                bg=Theme.BG_SECONDARY
+            ).pack(anchor='w')
 
             value_label = tk.Label(
-                greek_frame,
-                text="-",
-                font=("Segoe UI", 14, "bold"),
-                bg=ModernStyle.BG_CARD,
-                fg=ModernStyle.ACCENT_PRIMARY,
+                card, text='-',
+                font=(Theme.FONT_MONO, 18, 'bold'),
+                fg=Theme.ACCENT_CYAN,
+                bg=Theme.BG_SECONDARY
             )
-            value_label.pack(pady=3)
-            self.greek_labels[greek_name.lower()] = value_label
+            value_label.pack(anchor='w', pady=(8, 0))
 
-            units_label = tk.Label(
-                greek_frame,
-                text=units,
-                font=("Segoe UI", 7),
-                bg=ModernStyle.BG_CARD,
-                fg=ModernStyle.TEXT_SECONDARY,
-            )
-            units_label.pack(anchor=tk.W)
+            self.greek_displays[key] = value_label
 
-    def setup_detail_tab(self, parent):
-        """Set up detailed text output tab (compact)."""
-        detail_label = tk.Label(
-            parent,
-            text="Detailed Output",
-            font=("Segoe UI", 9, "bold"),
-            bg=ModernStyle.BG_PRIMARY,
-            fg=ModernStyle.TEXT_PRIMARY,
+    def _build_details_tab(self):
+        """Build the detailed output tab."""
+        frame = tk.Frame(self.notebook, bg=Theme.BG_PRIMARY)
+        self.notebook.add(frame, text='Details')
+
+        self.details_text = scrolledtext.ScrolledText(
+            frame,
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_PRIMARY,
+            insertbackground=Theme.ACCENT_BLUE,
+            font=(Theme.FONT_MONO, 9),
+            relief='flat',
+            padx=12,
+            pady=12
         )
-        detail_label.pack(anchor=tk.W, padx=8, pady=4)
+        self.details_text.pack(fill='both', expand=True, padx=8, pady=8)
 
-        self.output_text = scrolledtext.ScrolledText(
-            parent,
-            height=18,
-            width=80,
-            wrap=tk.WORD,
-            bg=ModernStyle.BG_CARD,
-            fg=ModernStyle.TEXT_PRIMARY,
-            font=("Consolas", 8),
-            relief="flat",
-            borderwidth=1,
-            insertbackground=ModernStyle.ACCENT_PRIMARY,
-            selectbackground=ModernStyle.ACCENT_PRIMARY,
-            selectforeground="#ffffff",
-        )
-        self.output_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+    def _on_function_change(self):
+        """Handle function selection change."""
+        func_key = self.function_var.get()
 
-    def complex_payoff_function(self, x):
-        """Complex payoff example."""
-        strike1 = 90.0
-        strike2 = 110.0
-        bull_spread = np.maximum(x - strike1, 0) - np.maximum(x - strike2, 0)
-        vol_component = 5.0 * np.exp(-((x - 100.0) ** 2) / (2 * 10.0**2))
-        transition = 2.0 * sigmoid(x, center=100.0, scale=0.1)
-        return bull_spread + vol_component + transition
+        # Update default ranges based on function
+        ranges = {
+            'sin': ('0', str(round(2 * np.pi, 4))),
+            'cos': ('0', str(round(2 * np.pi, 4))),
+            'sigmoid': ('0', '10'),
+            'gaussian': ('0', '10'),
+            'polynomial': ('0', '10'),
+            'bull_spread': ('80', '120'),
+            'butterfly': ('85', '115'),
+        }
 
-    def on_function_change(self):
-        """Update price range based on selected function."""
+        if func_key in ranges:
+            min_val, max_val = ranges[func_key]
+            self.range_vars['min_price'].set(min_val)
+            self.range_vars['max_price'].set(max_val)
+
+    def _use_custom_function(self):
+        """Parse and use custom function."""
+        code = self.custom_entry.get('1.0', 'end').strip()
+
         try:
-            func_key = self.function_var.get()
-            if func_key == "sin" or func_key == "cos":
-                self.min_price_var.set("0")
-                self.max_price_var.set(str(2 * np.pi))
-            elif func_key == "complex":
-                self.min_price_var.set("80")
-                self.max_price_var.set("120")
-            else:
-                self.min_price_var.set("0")
-                self.max_price_var.set("10")
-        except Exception as e:
-            self.show_error("Error updating function", str(e))
-
-    def validate_inputs(self) -> tuple:
-        """Validate all user inputs and return parameters."""
-        try:
-            # Validate function
-            func_key = self.function_var.get()
-            if func_key not in self.function_dict:
-                raise ValidationError("Please select a function")
-
-            # Validate price range
-            try:
-                min_price = float(self.min_price_var.get())
-                max_price = float(self.max_price_var.get())
-            except ValueError:
-                raise ValidationError("Price range must be valid numbers")
-
-            if min_price >= max_price:
-                raise ValidationError("Min price must be less than max price")
-
-            if min_price < 0:
-                raise ValidationError("Min price cannot be negative")
-
-            # Validate number of options
-            try:
-                n_options = int(self.n_options_var.get())
-            except ValueError:
-                raise ValidationError("Number of options must be an integer")
-
-            if n_options < 1 or n_options > 100:
-                raise ValidationError("Number of options must be between 1 and 100")
-
-            # Validate pricing parameters
-            try:
-                pricing_params = {
-                    "S0": float(self.pricing_vars["S0"].get()),
-                    "r": float(self.pricing_vars["r"].get()),
-                    "T": float(self.pricing_vars["T"].get()),
-                    "sigma": float(self.pricing_vars["sigma"].get()),
-                }
-            except ValueError:
-                raise ValidationError("All pricing parameters must be valid numbers")
-
-            if pricing_params["S0"] <= 0:
-                raise ValidationError("Stock price must be positive")
-            if pricing_params["r"] < 0 or pricing_params["r"] > 1:
-                raise ValidationError("Risk-free rate should be between 0 and 1")
-            if pricing_params["T"] <= 0:
-                raise ValidationError("Time to expiration must be positive")
-            if pricing_params["sigma"] <= 0 or pricing_params["sigma"] > 2:
-                raise ValidationError("Volatility should be between 0 and 2 (0-200%)")
-
-            # Validate basis functions
-            if not (
-                self.use_calls_var.get()
-                or self.use_puts_var.get()
-                or self.use_stock_var.get()
-            ):
-                raise ValidationError("At least one basis function must be selected")
-
-            return func_key, min_price, max_price, n_options, pricing_params
-
-        except ValidationError as e:
-            raise
-        except Exception as e:
-            raise ValidationError(f"Unexpected validation error: {str(e)}")
-
-    def use_custom_function(self):
-        """Use custom function from text entry with better error handling."""
-        try:
-            code = self.custom_func_entry.get("1.0", tk.END).strip()
-            if not code or code.startswith("#"):
-                self.show_warning("Please enter a valid function expression")
-                return
-
-            # Create a function from the code
             def custom_func(x):
                 namespace = {
-                    "np": np,
-                    "x": x,
-                    "sin": np.sin,
-                    "cos": np.cos,
-                    "exp": np.exp,
-                    "log": np.log,
-                    "sqrt": np.sqrt,
-                    "abs": np.abs,
-                    "maximum": np.maximum,
-                    "minimum": np.minimum,
-                    "__builtins__": {},
+                    'np': np, 'x': x,
+                    'sin': np.sin, 'cos': np.cos, 'exp': np.exp,
+                    'log': np.log, 'sqrt': np.sqrt, 'abs': np.abs,
+                    'maximum': np.maximum, 'minimum': np.minimum,
+                    '__builtins__': {}
                 }
-                try:
-                    result = eval(code, namespace)
-                    if not isinstance(result, np.ndarray):
-                        result = np.array(result)
-                    return result
-                except Exception as e:
-                    raise ValueError(f"Function evaluation error: {str(e)}")
+                return eval(code, namespace)
 
-            # Test the function
+            # Test
             test_x = np.array([1.0, 2.0, 3.0])
-            test_result = custom_func(test_x)
+            result = custom_func(test_x)
+            if len(result) != len(test_x):
+                raise ValueError("Function must return array of same length")
 
-            if not isinstance(test_result, np.ndarray):
-                raise ValueError("Function must return a numpy array")
-
-            if len(test_result) != len(test_x):
-                raise ValueError("Function output length must match input length")
-
-            self.function_dict["custom"] = ("Custom Function", custom_func)
-            self.function_var.set("custom")
-            self.update_status(
-                "Custom function loaded successfully", ModernStyle.ACCENT_SUCCESS
-            )
+            self.functions['custom'] = ('Custom', code, custom_func)
+            self.function_var.set('custom')
+            self._update_status('Custom function loaded', Theme.ACCENT_GREEN)
 
         except Exception as e:
-            error_msg = f"Invalid function: {str(e)}\n\nMake sure to use numpy functions (np.sin, np.exp, etc.)"
-            self.show_error("Custom Function Error", error_msg)
-            self.update_status(
-                "Error loading custom function", ModernStyle.STATUS_ERROR
-            )
+            messagebox.showerror('Invalid Function', f'Error: {str(e)}')
+            self._update_status('Error loading function', Theme.ACCENT_RED)
 
-    def calculate_approximation(self):
-        """Calculate the approximation in a separate thread."""
+    def _validate_inputs(self) -> tuple:
+        """Validate all inputs and return parameters."""
+        try:
+            min_price = float(self.range_vars['min_price'].get())
+            max_price = float(self.range_vars['max_price'].get())
+            n_options = int(self.range_vars['n_options'].get())
+
+            if min_price >= max_price:
+                raise ValidationError('Min price must be less than max price')
+            if n_options < 1 or n_options > 100:
+                raise ValidationError('Number of options must be 1-100')
+
+            pricing = {
+                'S0': float(self.pricing_vars['S0'].get()),
+                'r': float(self.pricing_vars['r'].get()),
+                'T': float(self.pricing_vars['T'].get()),
+                'sigma': float(self.pricing_vars['sigma'].get()),
+            }
+
+            if pricing['S0'] <= 0:
+                raise ValidationError('Stock price must be positive')
+            if pricing['sigma'] <= 0:
+                raise ValidationError('Volatility must be positive')
+            if pricing['T'] <= 0:
+                raise ValidationError('Time to expiry must be positive')
+
+            if not (self.use_calls_var.get() or self.use_puts_var.get() or self.use_stock_var.get()):
+                raise ValidationError('Select at least one basis function')
+
+            return min_price, max_price, n_options, pricing
+
+        except ValueError as e:
+            raise ValidationError(f'Invalid numeric input: {str(e)}')
+
+    def _calculate_approximation(self):
+        """Start the approximation calculation."""
         if self.is_calculating:
-            self.show_warning("Calculation already in progress. Please wait.")
             return
 
         try:
-            # Validate inputs
-            func_key, min_price, max_price, n_options, pricing_params = (
-                self.validate_inputs()
-            )
+            min_price, max_price, n_options, pricing = self._validate_inputs()
 
-            # Get function
-            _, target_func = self.function_dict[func_key]
+            func_key = self.function_var.get()
+            if func_key not in self.functions:
+                raise ValidationError('Please select a function')
+
+            _, _, target_func = self.functions[func_key]
             self.current_function = target_func
 
-            # Disable button and show progress
             self.is_calculating = True
-            self.calculate_btn.config(state="disabled")
-            self.update_status("Calculating...", ModernStyle.STATUS_INFO)
-            self.progress_var.set("Initializing approximation...")
-            self.root.update()
+            self.calculate_btn.configure(state='disabled', text='Calculating...')
+            self._update_status('Calculating...', Theme.ACCENT_YELLOW)
 
-            # Run calculation in separate thread
-            self.calculation_thread = threading.Thread(
-                target=self._calculate_approximation_thread,
-                args=(target_func, min_price, max_price, n_options, pricing_params),
-                daemon=True,
+            thread = threading.Thread(
+                target=self._run_calculation,
+                args=(target_func, min_price, max_price, n_options, pricing),
+                daemon=True
             )
-            self.calculation_thread.start()
+            thread.start()
 
         except ValidationError as e:
-            self.show_error("Validation Error", str(e))
-            self.is_calculating = False
-            self.calculate_btn.config(state="normal")
+            messagebox.showerror('Validation Error', str(e))
         except Exception as e:
-            self.show_error(
-                "Error", f"Unexpected error: {str(e)}\n\n{traceback.format_exc()}"
-            )
-            self.is_calculating = False
-            self.calculate_btn.config(state="normal")
+            messagebox.showerror('Error', f'Unexpected error: {str(e)}')
 
-    def _calculate_approximation_thread(
-        self, target_func, min_price, max_price, n_options, pricing_params
-    ):
-        """Perform calculation in background thread."""
+    def _run_calculation(self, target_func, min_price, max_price, n_options, pricing):
+        """Run calculation in background thread."""
         try:
-            # Update progress
-            self.root.after(
-                0, lambda: self.progress_var.set("Creating approximator...")
-            )
-
-            # Create approximator
             approximator = OptionsFunctionApproximator(
                 n_options=n_options,
                 price_range=(min_price, max_price),
                 use_calls=self.use_calls_var.get(),
                 use_puts=self.use_puts_var.get(),
                 use_stock=self.use_stock_var.get(),
-                **pricing_params,
+                **pricing
             )
 
-            # Update progress
-            self.root.after(
-                0, lambda: self.progress_var.set("Computing approximation...")
-            )
-
-            # Calculate approximation
-            weights, mse = approximator.approximate(
-                target_func, n_points=1000, regularization=0.001
-            )
-
-            # Calculate additional metrics
-            self.root.after(
-                0, lambda: self.progress_var.set("Calculating premiums and Greeks...")
-            )
+            weights, mse = approximator.approximate(target_func, n_points=1000, regularization=0.001)
             premiums, premium_details = approximator.calculate_premiums()
             greeks = approximator.calculate_portfolio_greeks()
 
-            # Store results
             self.approximator = approximator
-            self.approximation_error = {"mse": mse, "rmse": np.sqrt(mse)}
+            self.approximation_error = {'mse': mse, 'rmse': np.sqrt(mse)}
             self.premium_details = premium_details
             self.greeks = greeks
 
-            # Update UI in main thread
-            self.root.after(0, self._update_ui_after_calculation)
+            self.root.after(0, lambda: self._update_ui(min_price, max_price))
 
         except Exception as e:
-            error_msg = f"Calculation failed: {str(e)}\n\n{traceback.format_exc()}"
-            self.root.after(0, lambda: self.show_error("Calculation Error", error_msg))
-            self.root.after(
-                0, lambda: self.update_status("Error", ModernStyle.STATUS_ERROR)
-            )
-            self.root.after(0, lambda: self.calculate_btn.config(state="normal"))
-            self.is_calculating = False
+            self.root.after(0, lambda: messagebox.showerror('Calculation Error', str(e)))
+            self.root.after(0, lambda: self._update_status('Error', Theme.ACCENT_RED))
+        finally:
+            self.root.after(0, self._reset_calculate_button)
 
-    def _update_ui_after_calculation(self):
-        """Update UI after calculation completes."""
+    def _reset_calculate_button(self):
+        """Reset calculate button state."""
+        self.is_calculating = False
+        self.calculate_btn.configure(state='normal', text='Calculate')
+
+    def _update_ui(self, min_price, max_price):
+        """Update all UI elements after calculation."""
+        self._update_plot(min_price, max_price)
+        self._update_metrics()
+        self._update_options_trees()
+        self._update_greeks()
+        self._update_details()
+        self._update_status('Calculation complete', Theme.ACCENT_GREEN)
+
+    def _update_plot(self, min_price, max_price):
+        """Update the chart."""
+        self.ax.clear()
+
+        x = np.linspace(min_price, max_price, 1000)
+        target_y = self.current_function(x)
+        approx_y = self.approximator.evaluate(x)
+
+        self.ax.plot(x, target_y, color=Theme.CHART_PRIMARY, linewidth=2.5, label='Target', alpha=0.9)
+        self.ax.plot(x, approx_y, color=Theme.CHART_SECONDARY, linewidth=2, linestyle='--', label='Approximation', alpha=0.9)
+
+        legend = self.ax.legend(loc='best', fontsize=9)
+        legend.get_frame().set_facecolor(Theme.BG_SECONDARY)
+        legend.get_frame().set_edgecolor(Theme.BORDER_DEFAULT)
+        for text in legend.get_texts():
+            text.set_color(Theme.TEXT_PRIMARY)
+
+        self._style_axes(self.ax)
+        self.ax.set_title('Target vs Approximation', fontsize=11, color=Theme.TEXT_PRIMARY, pad=10)
+
+        # Add RMSE annotation
+        rmse = self.approximation_error['rmse']
+        self.ax.text(0.02, 0.98, f'RMSE: {rmse:.6f}',
+            transform=self.ax.transAxes,
+            verticalalignment='top',
+            fontsize=9,
+            color=Theme.TEXT_PRIMARY,
+            bbox=dict(boxstyle='round,pad=0.4', facecolor=Theme.BG_SECONDARY, edgecolor=Theme.BORDER_DEFAULT)
+        )
+
+        self.fig.tight_layout()
+        self.canvas.draw()
+
+    def _update_metrics(self):
+        """Update summary metrics."""
+        if self.approximation_error:
+            self.metrics['mse'].set_value(f'{self.approximation_error["mse"]:.6f}')
+            self.metrics['rmse'].set_value(f'{self.approximation_error["rmse"]:.6f}')
+
+        if self.approximator:
+            total_cost = self.approximator.get_total_cost()
+            self.metrics['total_cost'].set_value(f'${total_cost:,.2f}')
+
+        if self.premium_details:
+            n_calls = len(self.premium_details.get('calls', []))
+            n_puts = len(self.premium_details.get('puts', []))
+            self.metrics['num_options'].set_value(str(n_calls + n_puts))
+
+    def _update_options_trees(self):
+        """Update options breakdown tables."""
+        # Clear
+        for item in self.calls_tree.get_children():
+            self.calls_tree.delete(item)
+        for item in self.puts_tree.get_children():
+            self.puts_tree.delete(item)
+
+        if not self.premium_details:
+            return
+
+        for call in sorted(self.premium_details.get('calls', []), key=lambda x: x['strike']):
+            self.calls_tree.insert('', 'end', values=(
+                f'${call["strike"]:.2f}',
+                f'{call["weight"]:.4f}',
+                f'${call["premium_per_unit"]:.2f}',
+                f'${call["total_cost"]:.2f}'
+            ))
+
+        for put in sorted(self.premium_details.get('puts', []), key=lambda x: x['strike']):
+            self.puts_tree.insert('', 'end', values=(
+                f'${put["strike"]:.2f}',
+                f'{put["weight"]:.4f}',
+                f'${put["premium_per_unit"]:.2f}',
+                f'${put["total_cost"]:.2f}'
+            ))
+
+    def _update_greeks(self):
+        """Update Greeks display."""
+        if not self.greeks:
+            return
+
+        for key, label in self.greek_displays.items():
+            value = self.greeks.get(key, 0)
+            label.configure(text=f'{value:.4f}')
+
+    def _update_details(self):
+        """Update detailed output."""
+        self.details_text.configure(state='normal')
+        self.details_text.delete('1.0', 'end')
+
+        if not self.approximator:
+            return
+
+        old_stdout = sys.stdout
+        sys.stdout = buffer = io.StringIO()
+
         try:
-            # Update plot
-            if self.current_function:
-                min_price = float(self.min_price_var.get())
-                max_price = float(self.max_price_var.get())
-                self.update_plot(self.current_function, min_price, max_price)
+            output = f"Options Function Approximation Results\n"
+            output += f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            output += "=" * 60 + "\n\n"
 
-            # Update all display tabs
-            self.update_summary_tab()
-            self.update_cost_tab()
-            self.update_greeks_tab()
-            self.update_detail_tab()
-
-            # Reset UI state
-            self.progress_var.set("")
-            self.update_status("Calculation complete!", ModernStyle.STATUS_SUCCESS)
-            self.calculate_btn.config(state="normal")
-            self.is_calculating = False
-
-        except Exception as e:
-            self.show_error("UI Update Error", f"Error updating display: {str(e)}")
-            self.calculate_btn.config(state="normal")
-            self.is_calculating = False
-
-    def update_plot(self, target_func, min_price, max_price):
-        """Update the plot with approximation."""
-        try:
-            self.ax.clear()
-
-            stock_prices = np.linspace(min_price, max_price, 1000)
-            target_values = target_func(stock_prices)
-
-            if self.approximator is not None:
-                approx_values = self.approximator.evaluate(stock_prices)
-
-                # Modern professional chart colors
-                self.ax.plot(
-                    stock_prices,
-                    target_values,
-                    color=ModernStyle.CHART_LINE_1,
-                    linestyle="-",
-                    label="Target Function",
-                    linewidth=2.5,
-                    alpha=0.9,
-                )
-                self.ax.plot(
-                    stock_prices,
-                    approx_values,
-                    color=ModernStyle.CHART_LINE_2,
-                    linestyle="--",
-                    label="Options Approximation",
-                    linewidth=2,
-                    alpha=0.9,
-                )
-
-                # Modern legend styling
-                legend = self.ax.legend(loc="best", fontsize=10, framealpha=0.95)
-                legend.get_frame().set_facecolor(ModernStyle.BG_CARD)
-                legend.get_frame().set_edgecolor(ModernStyle.BORDER_COLOR)
-                legend.get_frame().set_linewidth(1)
-                for text in legend.get_texts():
-                    text.set_color(ModernStyle.TEXT_PRIMARY)
-
-                self.ax.set_xlabel(
-                    "Stock Price", fontsize=11, color=ModernStyle.TEXT_PRIMARY
-                )
-                self.ax.set_ylabel(
-                    "Function Value", fontsize=11, color=ModernStyle.TEXT_PRIMARY
-                )
-                self.ax.set_title(
-                    "Target Function vs. Options Approximation",
-                    fontsize=12,
-                    fontweight="bold",
-                    color=ModernStyle.TEXT_PRIMARY,
-                    pad=12,
-                )
-                self.ax.tick_params(colors=ModernStyle.CHART_AXIS, labelsize=9)
-                self.ax.grid(
-                    True,
-                    alpha=0.2,
-                    linestyle="-",
-                    color=ModernStyle.CHART_GRID,
-                    linewidth=0.5,
-                )
-                self.ax.set_facecolor(ModernStyle.BG_CARD)
-
-                # Modern spine styling
-                for spine in self.ax.spines.values():
-                    spine.set_color(ModernStyle.BORDER_COLOR)
-                    spine.set_linewidth(1)
-
-                # Modern error info box
-                if self.approximation_error:
-                    rmse = self.approximation_error["rmse"]
-                    self.ax.text(
-                        0.02,
-                        0.98,
-                        f"RMSE: {rmse:.6f}",
-                        transform=self.ax.transAxes,
-                        verticalalignment="top",
-                        bbox=dict(
-                            boxstyle="round,pad=0.5",
-                            facecolor=ModernStyle.BG_CARD,
-                            edgecolor=ModernStyle.BORDER_COLOR,
-                            alpha=0.95,
-                            linewidth=1,
-                        ),
-                        fontsize=9,
-                        color=ModernStyle.TEXT_PRIMARY,
-                        weight="normal",
-                    )
-            else:
-                self.ax.text(
-                    0.5,
-                    0.5,
-                    "No data to display",
-                    transform=self.ax.transAxes,
-                    ha="center",
-                    va="center",
-                    fontsize=12,
-                    color=ModernStyle.TEXT_SECONDARY,
-                )
-
-            self.canvas.draw()
-
-        except Exception as e:
-            self.show_error("Plot Error", f"Error updating plot: {str(e)}")
-
-    def update_summary_tab(self):
-        """Update summary tab with metrics."""
-        try:
             if self.approximation_error:
-                self.mse_label.config(
-                    text=f"MSE: {self.approximation_error['mse']:.6f}"
-                )
-                self.rmse_label.config(
-                    text=f"RMSE: {self.approximation_error['rmse']:.6f}"
-                )
+                output += "APPROXIMATION QUALITY\n"
+                output += "-" * 40 + "\n"
+                output += f"MSE:  {self.approximation_error['mse']:.6f}\n"
+                output += f"RMSE: {self.approximation_error['rmse']:.6f}\n\n"
 
-            if self.approximator:
-                total_cost = self.approximator.get_total_cost()
-                self.total_cost_label.config(text=f"Total Cost: ${total_cost:,.2f}")
+            self.approximator.print_cost_breakdown()
+            output += buffer.getvalue()
 
+            self.details_text.insert('end', output)
+
+        finally:
+            sys.stdout = old_stdout
+
+        self.details_text.configure(state='disabled')
+
+    def _update_status(self, message: str, color: str = Theme.TEXT_SECONDARY):
+        """Update status indicator."""
+        self.status_label.configure(text=message)
+
+        # Update status dot color
+        self.status_dot.delete('all')
+        self.status_dot.create_oval(2, 2, 8, 8, fill=color, outline='')
+
+    def _export_results(self):
+        """Export results to file."""
+        if not self.approximator:
+            messagebox.showinfo('Export', 'No results to export. Run a calculation first.')
+            return
+
+        filetypes = [
+            ('CSV files', '*.csv'),
+            ('Text files', '*.txt'),
+            ('All files', '*.*')
+        ]
+
+        filepath = filedialog.asksaveasfilename(
+            defaultextension='.csv',
+            filetypes=filetypes,
+            title='Export Results'
+        )
+
+        if not filepath:
+            return
+
+        try:
+            with open(filepath, 'w', newline='') as f:
+                writer = csv.writer(f)
+
+                # Header
+                writer.writerow(['Options Function Approximation Results'])
+                writer.writerow([f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'])
+                writer.writerow([])
+
+                # Metrics
+                writer.writerow(['Metrics'])
+                writer.writerow(['MSE', self.approximation_error['mse']])
+                writer.writerow(['RMSE', self.approximation_error['rmse']])
+                writer.writerow(['Total Cost', self.approximator.get_total_cost()])
+                writer.writerow([])
+
+                # Greeks
+                writer.writerow(['Portfolio Greeks'])
+                for key, value in self.greeks.items():
+                    writer.writerow([key.capitalize(), value])
+                writer.writerow([])
+
+                # Options
                 if self.premium_details:
-                    num_calls = len(self.premium_details.get("calls", []))
-                    num_puts = len(self.premium_details.get("puts", []))
-                    stock_cost = self.premium_details.get("stock_cost", 0.0)
+                    writer.writerow(['Call Options'])
+                    writer.writerow(['Strike', 'Weight', 'Premium/Unit', 'Total Cost'])
+                    for call in self.premium_details.get('calls', []):
+                        writer.writerow([call['strike'], call['weight'], call['premium_per_unit'], call['total_cost']])
+                    writer.writerow([])
 
-                    comp_text = f"• Call Options: {num_calls}\n"
-                    comp_text += f"• Put Options: {num_puts}\n"
-                    comp_text += f"• Stock Position Cost: ${stock_cost:,.2f}\n"
-                    comp_text += f"• Total Options: {num_calls + num_puts}"
+                    writer.writerow(['Put Options'])
+                    writer.writerow(['Strike', 'Weight', 'Premium/Unit', 'Total Cost'])
+                    for put in self.premium_details.get('puts', []):
+                        writer.writerow([put['strike'], put['weight'], put['premium_per_unit'], put['total_cost']])
 
-                    self.comp_label.config(text=comp_text)
-        except Exception as e:
-            self.show_error("Summary Update Error", str(e))
-
-    def update_cost_tab(self):
-        """Update cost breakdown tab."""
-        try:
-            # Clear existing items
-            for item in self.calls_tree.get_children():
-                self.calls_tree.delete(item)
-            for item in self.puts_tree.get_children():
-                self.puts_tree.delete(item)
-
-            if self.premium_details:
-                # Add call options
-                for call in sorted(
-                    self.premium_details.get("calls", []), key=lambda x: x["strike"]
-                ):
-                    self.calls_tree.insert(
-                        "",
-                        tk.END,
-                        values=(
-                            f"${call['strike']:.2f}",
-                            f"{call['weight']:.4f}",
-                            f"${call['premium_per_unit']:.2f}",
-                            f"${call['total_cost']:.2f}",
-                        ),
-                    )
-
-                # Add put options
-                for put in sorted(
-                    self.premium_details.get("puts", []), key=lambda x: x["strike"]
-                ):
-                    self.puts_tree.insert(
-                        "",
-                        tk.END,
-                        values=(
-                            f"${put['strike']:.2f}",
-                            f"{put['weight']:.4f}",
-                            f"${put['premium_per_unit']:.2f}",
-                            f"${put['total_cost']:.2f}",
-                        ),
-                    )
-        except Exception as e:
-            self.show_error("Cost Tab Update Error", str(e))
-
-    def update_greeks_tab(self):
-        """Update portfolio Greeks tab."""
-        try:
-            if self.greeks:
-                self.greek_labels["delta"].config(text=f"{self.greeks['delta']:.4f}")
-                self.greek_labels["gamma"].config(text=f"{self.greeks['gamma']:.4f}")
-                self.greek_labels["vega"].config(text=f"{self.greeks['vega']:.2f}")
-                self.greek_labels["theta"].config(text=f"{self.greeks['theta']:.4f}")
-        except Exception as e:
-            self.show_error("Greeks Update Error", str(e))
-
-    def update_detail_tab(self):
-        """Update detailed text output tab."""
-        try:
-            self.output_text.config(state=tk.NORMAL)
-            self.output_text.delete("1.0", tk.END)
-
-            if self.approximator is None:
-                return
-
-            import io
-            import sys
-
-            old_stdout = sys.stdout
-            sys.stdout = buffer = io.StringIO()
-
-            try:
-                if self.approximation_error:
-                    self.output_text.insert(tk.END, "APPROXIMATION QUALITY\n")
-                    self.output_text.insert(tk.END, "=" * 70 + "\n")
-                    self.output_text.insert(
-                        tk.END,
-                        f"MSE Error: {self.approximation_error['mse']:.6f}\n",
-                    )
-                    self.output_text.insert(
-                        tk.END,
-                        f"RMSE Error: {self.approximation_error['rmse']:.6f}\n\n",
-                    )
-
-                self.approximator.print_cost_breakdown()
-                output = buffer.getvalue()
-                self.output_text.insert(tk.END, output)
-
-            finally:
-                sys.stdout = old_stdout
-
-            self.output_text.config(state=tk.DISABLED)
+            self._update_status(f'Exported to {filepath}', Theme.ACCENT_GREEN)
 
         except Exception as e:
-            self.show_error("Detail Tab Update Error", str(e))
+            messagebox.showerror('Export Error', f'Failed to export: {str(e)}')
 
-    def update_status(self, message: str, color: str = ModernStyle.STATUS_SUCCESS):
-        """Update status label."""
-        self.status_var.set(message)
-        self.status_label.config(fg=color)
-
-    def show_error(self, title: str, message: str):
-        """Show error message box."""
-        messagebox.showerror(title, message)
-        self.update_status("Error", ModernStyle.STATUS_ERROR)
-
-    def show_warning(self, message: str):
-        """Show warning message box."""
-        messagebox.showwarning("Warning", message)
-
-    def on_closing(self):
-        """Handle window closing."""
+    def _on_closing(self):
+        """Handle window close."""
         if self.is_calculating:
-            if messagebox.askokcancel("Quit", "Calculation in progress. Quit anyway?"):
-                self.root.destroy()
-        else:
-            self.root.destroy()
+            if not messagebox.askokcancel('Quit', 'Calculation in progress. Quit anyway?'):
+                return
+        self.root.destroy()
 
 
 def main():
-    """Main entry point."""
-    try:
-        root = tk.Tk()
-        app = OptionsApproximatorGUI(root)
-        root.mainloop()
-    except Exception as e:
-        messagebox.showerror(
-            "Fatal Error",
-            f"Application failed to start: {str(e)}\n\n{traceback.format_exc()}",
-        )
+    """Application entry point."""
+    root = tk.Tk()
+    app = OptionsApproximatorGUI(root)
+    root.mainloop()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
