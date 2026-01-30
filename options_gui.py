@@ -546,6 +546,31 @@ class OptionsApproximatorGUI:
             )
             cb.pack(anchor='w', pady=2)
 
+        # Optimization Settings Card
+        opt_card = Card(scrollable, title="Optimization Settings")
+        opt_card.pack(fill='x', pady=(0, 8))
+
+        self.iterative_var = tk.BooleanVar(value=True)
+        self.auto_reg_var = tk.BooleanVar(value=True)
+
+        for var, text in [
+            (self.iterative_var, 'Auto-select number of options'),
+            (self.auto_reg_var, 'Auto-tune regularization'),
+        ]:
+            cb = tk.Checkbutton(
+                opt_card.content,
+                text=text,
+                variable=var,
+                font=(Theme.FONT_FAMILY, 10),
+                fg=Theme.TEXT_PRIMARY,
+                bg=Theme.BG_SECONDARY,
+                selectcolor=Theme.BG_TERTIARY,
+                activebackground=Theme.BG_SECONDARY,
+                activeforeground=Theme.ACCENT_BLUE,
+                highlightthickness=0
+            )
+            cb.pack(anchor='w', pady=2)
+
     def _build_main_panel(self, parent):
         """Build the main content panel with chart and results."""
         # Chart area (top)
@@ -869,7 +894,21 @@ class OptionsApproximatorGUI:
                 **pricing
             )
 
-            weights, mse = approximator.approximate(target_func, n_points=1000, regularization=0.001)
+            # Get optimization settings from GUI
+            use_iterative = self.iterative_var.get()
+            use_auto_reg = self.auto_reg_var.get()
+
+            weights, mse = approximator.approximate(
+                target_func,
+                n_points=1000,
+                regularization=0.001,
+                iterative=use_iterative,
+                auto_regularization=use_auto_reg,
+                min_options=2,
+                validation_split=0.2,
+                verbose=False
+            )
+
             premiums, premium_details = approximator.calculate_premiums()
             greeks = approximator.calculate_portfolio_greeks()
 
@@ -964,7 +1003,7 @@ class OptionsApproximatorGUI:
                 f'${call["strike"]:.2f}',
                 f'{call["weight"]:.4f}',
                 f'${call["premium_per_unit"]:.2f}',
-                f'${call["total_cost"]:.2f}'
+                f'${call["net_cost"]:.2f}'
             ))
 
         for put in sorted(self.premium_details.get('puts', []), key=lambda x: x['strike']):
@@ -972,7 +1011,7 @@ class OptionsApproximatorGUI:
                 f'${put["strike"]:.2f}',
                 f'{put["weight"]:.4f}',
                 f'${put["premium_per_unit"]:.2f}',
-                f'${put["total_cost"]:.2f}'
+                f'${put["net_cost"]:.2f}'
             ))
 
     def _update_greeks(self):
@@ -1004,7 +1043,17 @@ class OptionsApproximatorGUI:
                 output += "APPROXIMATION QUALITY\n"
                 output += "-" * 40 + "\n"
                 output += f"MSE:  {self.approximation_error['mse']:.6f}\n"
-                output += f"RMSE: {self.approximation_error['rmse']:.6f}\n\n"
+                output += f"RMSE: {self.approximation_error['rmse']:.6f}\n"
+                output += f"Basis Functions Used: {self.approximator.n_basis}\n"
+
+                # Show optimization settings
+                if self.iterative_var.get() or self.auto_reg_var.get():
+                    output += "\nOptimization Settings:\n"
+                    if self.iterative_var.get():
+                        output += "  ✓ Auto-selected number of options\n"
+                    if self.auto_reg_var.get():
+                        output += "  ✓ Auto-tuned regularization\n"
+                output += "\n"
 
             self.approximator.print_cost_breakdown()
             output += buffer.getvalue()

@@ -11,7 +11,7 @@ approximates sin(x) over a specified range.
 
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Callable, Tuple, Optional
+from typing import Callable, Tuple, Optional, List
 import warnings
 
 try:
@@ -608,6 +608,12 @@ class OptionsFunctionApproximator:
         n_points: int = 1000,
         regularization: float = 0.0,
         method: str = "least_squares",
+        iterative: bool = False,
+        min_options: int = 1,
+        validation_split: float = 0.2,
+        verbose: bool = False,
+        auto_regularization: bool = False,
+        regularization_values: Optional[List[float]] = None,
     ) -> Tuple[np.ndarray, float]:
         """
         Find optimal weights to approximate the target function.
@@ -615,11 +621,49 @@ class OptionsFunctionApproximator:
         Args:
             target_function: Function f(S) to approximate
             n_points: Number of sample points for optimization
-            regularization: L2 regularization strength
+            regularization: L2 regularization strength (if auto_regularization=False)
             method: Optimization method ("least_squares" or "minimize")
+            iterative: If True, try different numbers of options and select best
+            min_options: Minimum number of options to try (when iterative=True)
+            validation_split: Fraction of data to use for validation (when iterative=True)
+            verbose: Print progress during iterative fitting
+            auto_regularization: If True, try different regularization values
+            regularization_values: List of regularization values to try (if auto_regularization=True)
 
         Returns:
             Tuple of (weights, mse_error)
+        """
+        if iterative or auto_regularization:
+            # Default regularization values if not provided
+            if auto_regularization and regularization_values is None:
+                regularization_values = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3]
+            elif not auto_regularization:
+                regularization_values = [regularization]
+
+            return self._approximate_iterative(
+                target_function,
+                n_points,
+                regularization_values,
+                method,
+                min_options,
+                validation_split,
+                verbose,
+                iterative,
+            )
+
+        return self._approximate_single(
+            target_function, n_points, regularization, method
+        )
+
+    def _approximate_single(
+        self,
+        target_function: Callable,
+        n_points: int,
+        regularization: float,
+        method: str,
+    ) -> Tuple[np.ndarray, float]:
+        """
+        Single approximation without iteration (internal method).
         """
         # Sample points across price range
         stock_prices = np.linspace(self.price_range[0], self.price_range[1], n_points)
@@ -628,6 +672,19 @@ class OptionsFunctionApproximator:
         # Evaluate basis functions
         basis_matrix = self.evaluate_basis(stock_prices)
 
+        return self._fit_weights(basis_matrix, target_values, regularization, method)
+
+    def _fit_weights(
+        self,
+        basis_matrix: np.ndarray,
+        target_values: np.ndarray,
+        regularization: float,
+        method: str,
+        suppress_warnings: bool = False,
+    ) -> Tuple[np.ndarray, float]:
+        """
+        Fit weights given basis matrix and target values (internal method).
+        """
         if method == "least_squares":
             # Solve: min ||basis_matrix @ weights - target_values||^2
             # Using normal equations with regularization
@@ -639,22 +696,23 @@ class OptionsFunctionApproximator:
                 A += regularization * np.eye(self.n_basis)
 
             # Check matrix conditioning for numerical stability
-            cond_number = np.linalg.cond(A)
-            if cond_number > 1e12:
-                warnings.warn(
-                    f"Matrix is ill-conditioned (condition number: {cond_number:.2e}). "
-                    f"Results may be numerically unstable. Consider:\n"
-                    f"  1. Increasing regularization (current: {regularization})\n"
-                    f"  2. Reducing number of options\n"
-                    f"  3. Checking for redundant basis functions",
-                    UserWarning
-                )
-            elif cond_number > 1e9:
-                warnings.warn(
-                    f"Matrix conditioning is marginal (condition number: {cond_number:.2e}). "
-                    f"Consider increasing regularization.",
-                    UserWarning
-                )
+            if not suppress_warnings:
+                cond_number = np.linalg.cond(A)
+                if cond_number > 1e12:
+                    warnings.warn(
+                        f"Matrix is ill-conditioned (condition number: {cond_number:.2e}). "
+                        f"Results may be numerically unstable. Consider:\n"
+                        f"  1. Increasing regularization (current: {regularization})\n"
+                        f"  2. Reducing number of options\n"
+                        f"  3. Checking for redundant basis functions",
+                        UserWarning
+                    )
+                elif cond_number > 1e9:
+                    warnings.warn(
+                        f"Matrix conditioning is marginal (condition number: {cond_number:.2e}). "
+                        f"Consider increasing regularization.",
+                        UserWarning
+                    )
 
             self.weights = np.linalg.solve(A, b)
 
@@ -685,6 +743,135 @@ class OptionsFunctionApproximator:
         mse = np.mean((approximation - target_values) ** 2)
 
         return self.weights, mse
+
+    def _approximate_iterative(
+        self,
+        target_function: Callable,
+        n_points: int,
+        regularization_values: List[float],
+        method: str,
+        min_options: int,
+        validation_split: float,
+        verbose: bool,
+        vary_options: bool,
+    ) -> Tuple[np.ndarray, float]:
+        """
+        Iteratively try different numbers of options and/or regularization values.
+        Uses train/validation split to avoid overfitting.
+        """
+        # Sample points across price range
+        stock_prices = np.linspace(self.price_range[0], self.price_range[1], n_points)
+        target_values = target_function(stock_prices)
+
+        # Split into train and validation sets
+        n_val = int(n_points * validation_split)
+        n_train = n_points - n_val
+
+        # Use alternating points for better coverage
+        train_indices = np.arange(0, n_points, 2)[:n_train]
+        val_indices = np.arange(1, n_points, 2)[:n_val]
+
+        train_prices = stock_prices[train_indices]
+        train_values = target_values[train_indices]
+        val_prices = stock_prices[val_indices]
+        val_values = target_values[val_indices]
+
+        # Store original basis functions and metadata
+        original_basis = self.basis_functions.copy()
+        original_names = self.basis_names.copy()
+        original_metadata = self.option_metadata.copy()
+        original_n_basis = self.n_basis
+
+        best_rmse = float('inf')
+        best_weights = None
+        best_n_basis = 0
+        best_reg = regularization_values[0]
+        results = []
+
+        # Determine which basis functions are options
+        option_indices = []
+        non_option_indices = []
+        for i, (opt_type, _) in enumerate(self.option_metadata):
+            if opt_type in ['call', 'put']:
+                option_indices.append(i)
+            else:
+                non_option_indices.append(i)
+
+        # Try different numbers of options and regularization values
+        max_options = len(option_indices)
+        option_range = range(min_options, max_options + 1) if vary_options else [max_options]
+
+        for reg in regularization_values:
+            for n_opts in option_range:
+                # Select subset of basis functions
+                # Always keep non-option basis functions (stock, gaussians, etc.)
+                selected_indices = non_option_indices + option_indices[:n_opts]
+                selected_indices.sort()
+
+                self.basis_functions = [original_basis[i] for i in selected_indices]
+                self.basis_names = [original_names[i] for i in selected_indices]
+                self.option_metadata = [original_metadata[i] for i in selected_indices]
+                self.n_basis = len(self.basis_functions)
+
+                # Fit on training data
+                train_basis = self.evaluate_basis(train_prices)
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")  # Suppress warnings during search
+                        weights, train_mse = self._fit_weights(
+                            train_basis, train_values, reg, method, suppress_warnings=True
+                        )
+
+                    # Evaluate on validation data
+                    val_basis = self.evaluate_basis(val_prices)
+                    val_pred = val_basis @ weights
+                    val_mse = np.mean((val_pred - val_values) ** 2)
+                    val_rmse = np.sqrt(val_mse)
+
+                    results.append({
+                        'n_options': n_opts,
+                        'n_basis': self.n_basis,
+                        'regularization': reg,
+                        'train_rmse': np.sqrt(train_mse),
+                        'val_rmse': val_rmse,
+                        'weights': weights.copy(),
+                    })
+
+                    if verbose:
+                        print(f"  reg={reg:.0e}, n_options={n_opts:3d}, n_basis={self.n_basis:3d}, "
+                              f"train_rmse={np.sqrt(train_mse):.6f}, val_rmse={val_rmse:.6f}")
+
+                    # Track best model
+                    if val_rmse < best_rmse:
+                        best_rmse = val_rmse
+                        best_weights = weights.copy()
+                        best_n_basis = self.n_basis
+                        best_indices = selected_indices.copy()
+                        best_reg = reg
+
+                except (np.linalg.LinAlgError, ValueError):
+                    # Skip configurations that fail to fit
+                    if verbose:
+                        print(f"  reg={reg:.0e}, n_options={n_opts:3d}, n_basis={self.n_basis:3d}, FAILED")
+                    continue
+
+        # Restore the best configuration
+        self.basis_functions = [original_basis[i] for i in best_indices]
+        self.basis_names = [original_names[i] for i in best_indices]
+        self.option_metadata = [original_metadata[i] for i in best_indices]
+        self.n_basis = best_n_basis
+        self.weights = best_weights
+
+        # Calculate final error on all data
+        full_basis = self.evaluate_basis(stock_prices)
+        full_pred = full_basis @ self.weights
+        final_mse = np.mean((full_pred - target_values) ** 2)
+
+        if verbose:
+            print(f"\n  Best model: regularization={best_reg:.0e}, {self.n_basis} basis functions, "
+                  f"validation RMSE={best_rmse:.6f}")
+
+        return self.weights, final_mse
 
     def evaluate(self, stock_prices: np.ndarray) -> np.ndarray:
         """
