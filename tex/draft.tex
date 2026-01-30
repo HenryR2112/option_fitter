@@ -1,13 +1,14 @@
-% Manuscript: Options as Basis Functions for Function Approximation
+% Manuscript: Options as Basis Functions: A Unifying Perspective
 \documentclass[11pt]{article}
 \usepackage{amsmath,amsthm,amssymb,mathtools}
-\usepackage{graphicx}
+\usepackage{graphicx, float}
 \usepackage{hyperref}
 \usepackage{enumitem}
 \usepackage{geometry}
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{booktabs}
+\usepackage[capitalize]{cleveref}
 \geometry{margin=1in}
 
 \theoremstyle{plain}
@@ -22,1141 +23,330 @@
 \newtheorem{example}[theorem]{Example}
 
 \DeclareMathOperator{\spanop}{span}
-\DeclareMathOperator{\supp}{supp}
-\DeclareMathOperator{\conv}{conv}
-\DeclareMathOperator{\diam}{diam}
 
-% Code listing style
-\lstset{
-  basicstyle=\ttfamily\small,
-  keywordstyle=\color{blue}\bfseries,
-  commentstyle=\color{gray}\itshape,
-  stringstyle=\color{red},
-  showstringspaces=false,
-  breaklines=true,
-  frame=single,
-  numbers=left,
-  numberstyle=\tiny\color{gray},
-  literate=
-    {ℝ}{{$\mathbb{R}$}}1
-    {ℕ}{{$\mathbb{N}$}}1
-    {→}{{$\rightarrow$}}1
-    {∃}{{$\exists$}}1
-    {∀}{{$\forall$}}1
-    {∈}{{$\in$}}1
-    {≤}{{$\leq$}}1
-    {≥}{{$\geq$}}1
-    {∧}{{$\land$}}1
-    {α}{{$\alpha$}}1
-    {β}{{$\beta$}}1
-    {ε}{{$\varepsilon$}}1
-    {γ}{{$\gamma$}}1
-}
-
-\title{Options as Basis Functions: Rigorous Approximation Results for Call/Put Payoffs}
+\title{Options as Basis Functions: A Unifying Perspective Connecting Finance, Splines, and Neural Networks}
 \author{Henry James Ramstad}
 \date{\today}
 
 \begin{document}
+
 \maketitle
 
 \begin{abstract}
-We prove rigorous density and representation results showing that finite linear combinations of vanilla option payoffs (European calls or puts) together with affine terms are sufficient to uniformly approximate any continuous function on a compact price interval. We provide multiple constructive approaches: (i) a spline-based route that shows density in $C([a,b])$ and gives explicit finite representations via hinge (call) functions, (ii) an integral representation route for twice-differentiable functions (and functions with distributional second derivatives) yielding Riemann-sum discretizations that converge uniformly, and (iii) rate-of-convergence estimates with explicit dependence on smoothness. We establish the completeness of the option basis in various function spaces, provide detailed epsilon--delta proofs with quantitative bounds, characterize the extremal points of convex payoff approximation, and derive optimality conditions for best approximations. We accompany the theoretical development with a comprehensive Lean~4 formalization that includes machine-checked proofs of all foundational properties (continuity, Lipschitz continuity, boundedness) and—notably—a complete formal verification of the integral representation theorem for $C^2$ functions. A Python software implementation enables practical computation. Numerical experiments validate the theoretical results and demonstrate practical effectiveness.
+We present an expository synthesis showing that European call option payoffs 
+$(x-K)_+ = \max(x-K,0)$ share identical mathematical structure with linear 
+B-splines from approximation theory and ReLU activation functions from neural 
+networks. While the density of linear combinations of such functions in $C([a,b])$ 
+is known separately in each field, we provide a unified exposition that makes 
+the connections explicit. We include constructive proofs via piecewise-linear 
+approximation, error bounds for Hölder-continuous functions, and the standard 
+integral representation for $C^2$ functions. Selected results are formally 
+verified in Lean~4 accompanied by a full software implementation for practical payoff decomposition and analysis. This synthesis highlights opportunities for cross-disciplinary 
+transfer of techniques between mathematical finance, approximation theory, and 
+machine learning. 
 \end{abstract}
-
-\tableofcontents
 
 \section{Introduction}
 
-Call and put payoffs are elementary piecewise-linear functions widely used in financial replication. For a strike $K\in\mathbb{R}$ the European call payoff is $(x-K)_+:=\max(x-K,0)$; the put payoff is $(K-x)_+$. In practical finance one represents complex payoffs as finite portfolios of such vanilla instruments plus cash and stock positions. This manuscript provides a mathematically rigorous foundation proving which classes of functions can be approximated and giving constructive methods to obtain the approximations.
+For a strike $K \in \mathbb{R}$, the European call option payoff is $(x-K)_+ := \max(x-K,0)$. This simple piecewise-linear function appears under different names across multiple disciplines: in finance as a call option payoff, in approximation theory as a linear B-spline or hinge function, and in machine learning as a shifted ReLU activation. 
 
-We establish that the basis consisting of affine terms (constant and linear) together with call option payoffs is sufficient to uniformly approximate any continuous function on a compact interval. Beyond mere density, we derive quantitative convergence rates, characterize optimal approximations, and extend the theory to Sobolev spaces and functions with generalized derivatives. A key insight is that option portfolios are mathematically equivalent to one-hidden-layer ReLU neural networks, connecting quantitative finance to deep learning theory.
-
-\textbf{Formal verification.} A distinguishing feature of this work is the comprehensive Lean~4 formalization of the mathematical theory. We provide machine-checked proofs of all foundational properties and—notably—a complete formal proof of the integral representation theorem for twice-differentiable functions, demonstrating that proof assistants can handle sophisticated calculus arguments central to approximation theory.
-
-\subsection{Contributions}
-
-The main contributions of this work are:
+\textbf{Contribution.} While the density of linear combinations of such functions in $C([a,b])$ is known in each field separately, we provide a unified exposition that makes the connections explicit. Our treatment includes:
 \begin{enumerate}
-    \item \textbf{Rigorous mathematical foundation}: Complete proofs of density theorems with explicit error bounds and convergence rates.
-    \item \textbf{Comprehensive formal verification}: A Lean~4 formalization of core results including:
-    \begin{itemize}
-        \item All foundational properties of hinge functions (continuity, Lipschitz continuity, non-negativity, boundedness)
-        \item Portfolio construction and continuity preservation
-        \item \textit{Complete machine-checked proof} of the integral representation theorem for $C^2$ functions
-        \item Connection to ReLU neural networks via the Universal Approximation Theorem
-    \end{itemize}
-    \item \textbf{Software implementation}: A comprehensive Python library with GUI for practical function approximation using option portfolios.
-    \item \textbf{Financial applications}: Integration with Black-Scholes pricing, portfolio Greeks computation, and cost analysis.
-    \item \textbf{Numerical validation}: Experimental confirmation of theoretical convergence rates.
+    \item Constructive proofs using only elementary real analysis
+    \item Quantitative error bounds for different smoothness classes
+    \item Formal verification of the integral representation in Lean~4
+    \item Explicit identification of the mathematical equivalence: $\text{option payoff} = \text{linear B-spline} = \text{ReLU activation}$
 \end{enumerate}
+
+\textbf{Note on novelty}: The individual mathematical results presented here 
+are not new; they appear in standard references in each field. Our contribution 
+is expository: we make the connections between these fields explicit and 
+provide a unified presentation that may be useful for researchers working at 
+their intersections.
+
+\textbf{Significance.} This unification suggests that techniques from one field may be applicable in others. For instance, optimal strike placement for option portfolios relates to optimal knot placement in spline approximation and optimal bias initialization in neural networks.
+
+\subsection{Historical Context and Related Work}
+
+The mathematical properties of functions $(x-t)_+$ have been studied independently in several fields:
+
+\begin{itemize}
+\item \textbf{Spline Theory}: Linear B-splines of the form $(x-t_i)_+$ form a basis for piecewise-linear functions (de Boor, 2001). Our Lemma~\ref{lem:spline_repr} appears as Theorem 1.1 in de Boor's text.
+
+\item \textbf{Neural Networks}: Leshno et al. (1993) proved that neural networks with activation $\sigma(x)=\max(x,0)$ (ReLU) are universal approximators. Our Theorem~\ref{thm:density} provides an alternative constructive proof.
+
+\item \textbf{Financial Mathematics}: Breeden and Litzenberger (1978) showed state prices can be recovered from option prices, while Carr and Madan (2001) developed replication strategies using options. Our work provides the approximation-theoretic foundation for these approaches.
+\end{itemize}
+
+Our contribution is to synthesize these separate results into a coherent framework, highlighting their mathematical unity.
 
 \subsection{Organization}
 
-Section~\ref{sec:notation} establishes notation and preliminary definitions. Section~\ref{sec:theory} develops the theoretical foundation, including the main density theorem and convergence rates. Section~\ref{sec:integral} presents integral representations for smoother functions. Section~\ref{sec:completeness} extends density results to other function spaces. Section~\ref{sec:optimality} characterizes optimal approximations. Section~\ref{sec:extensions} discusses generalizations. Section~\ref{sec:lean} presents the Lean~4 formal verification. Section~\ref{sec:software} describes the software implementation. Section~\ref{sec:experiments} validates the theory through numerical experiments. Section~\ref{sec:applications} discusses financial applications. Section~\ref{sec:conclusion} concludes.
+Section~\ref{sec:preliminaries} establishes notation. Section~\ref{sec:density} proves density constructively. Section~\ref{sec:rates} provides error bounds. Section~\ref{sec:integral} presents the integral representation. Section~\ref{sec:connections} discusses interdisciplinary connections. Section~\ref{sec:verification} describes Lean formalization. Section~\ref{sec:conclusion} concludes with future directions.
 
-\section{Notation and preliminaries}\label{sec:notation}
+\section{Preliminaries}\label{sec:preliminaries}
 
-\subsection{Function spaces}
-Let $[a,b]\subset\mathbb{R}$ be a compact interval with $a<b$. We work with the following function spaces:
+Let $[a,b] \subset \mathbb{R}$ be a compact interval with $a < b$.
 
-\begin{definition}[Standard function spaces]
-\begin{enumerate}[label=(\roman*)}
-\item $C([a,b])$ denotes the Banach space of real-valued continuous functions with the supremum norm $\|f\|_{\infty}=\sup_{x\in[a,b]}|f(x)|$.
-\item $C^k([a,b])$ for $k\in\mathbb{N}$ denotes the space of $k$-times continuously differentiable functions with norm $\|f\|_{C^k}=\sum_{j=0}^k\|f^{(j)}\|_\infty$.
-\item $L^p([a,b])$ for $1\le p<\infty$ denotes the space of Lebesgue measurable functions with $\|f\|_p=\left(\int_a^b|f(x)|^p\,dx\right)^{1/p}<\infty$.
-\item $BV([a,b])$ denotes the space of functions of bounded variation.
-\item $W^{k,p}([a,b])$ denotes the Sobolev space of functions with weak derivatives up to order $k$ in $L^p$.
-\end{enumerate}
+\begin{definition}[Function spaces]
+$C([a,b])$ denotes continuous real-valued functions on $[a,b]$ with supremum norm $\|f\|_\infty = \sup_{x\in[a,b]}|f(x)|$. $C^k([a,b])$ denotes $k$-times continuously differentiable functions. $C^{0,\alpha}([a,b])$ denotes Hölder continuous functions of order $\alpha \in (0,1]$.
 \end{definition}
 
-\subsection{Option payoff functions}
-For $K\in\mathbb{R}$ define the hinge (call) function
-\[\phi_K(x):=(x-K)_+ = \max(x-K,0)=\begin{cases}x-K & \text{if }x>K,\\0&\text{if }x\le K.\end{cases}\]
-
-\begin{definition}[Put-call parity]
-The put payoff with strike $K$ satisfies
-\[\psi_K(x):=(K-x)_+ = (K-x)-(x-K)_+ = K-x+\phi_K(x).\]
-On any bounded interval $[a,b]$, the put can be expressed in terms of the call plus affine terms.
+\begin{definition}[Hinge function]
+For $K \in \mathbb{R}$, the \textbf{hinge function} is $\phi_K(x) := (x-K)_+ = \max(x-K,0)$.
 \end{definition}
 
-\begin{lemma}[Properties of hinge functions]\label{lem:hinge_properties}
-The hinge function $\phi_K$ satisfies:
-\begin{enumerate}[label=(\roman*)]
-\item $\phi_K$ is convex, continuous, and Lipschitz with constant $1$.
-\item $\phi_K'(x)=\mathbf{1}_{(K,\infty)}(x)$ almost everywhere.
-\item $\phi_K''=\delta_K$ in the distributional sense (Dirac delta at $K$).
-\item For $K_1<K_2$, $\phi_{K_2}(x)-\phi_{K_1}(x)=K_1-K_2+(x-K_1)_+-(x-K_2)_+$ is a trapezoid payoff.
-\item $\phi_K$ is non-negative: $\phi_K(x) \geq 0$ for all $x \in \mathbb{R}$.
-\item $\phi_K$ is bounded on $[a,b]$: $|\phi_K(x)| \leq \max(b-a, |K-a|) + (b-a)$ for $x \in [a,b]$.
-\end{enumerate}
-\end{lemma}
+This function has three equivalent interpretations:
+\begin{itemize}
+    \item \textbf{Financial}: Payoff of European call option with strike $K$
+    \item \textbf{Approximation}: Linear B-spline (basis function for piecewise-linear approximation)
+    \item \textbf{Machine Learning}: Shifted ReLU activation: $\phi_K(x) = \text{ReLU}(x-K)$
+\end{itemize}
 
-\begin{proof}
-Properties (i) and (ii) follow from the max representation. For (iii), let $\varphi\in C_c^\infty(\mathbb{R})$ be a test function. Then
-\[\langle\phi_K'',\varphi\rangle = \int_{K}^\infty\varphi''(x)\,dx = -\varphi'(K)=\langle\delta_K,\varphi'\rangle.\]
-Property (iv) is verified by direct computation. Properties (v) and (vi) are verified in the Lean formalization (see Section~\ref{sec:lean}).
+\begin{definition}[Option span]
+The \textbf{option span} is the set of finite linear combinations:
+\[
+\mathcal{S} := \spanop\{1, x, \phi_K : K \in [a,b]\}
+= \left\{\alpha + \beta x + \sum_{i=1}^N w_i \phi_{K_i}(x) : N \in \mathbb{N}, \alpha,\beta,w_i \in \mathbb{R}, K_i \in [a,b]\right\}.
+\]
+\end{definition}
+
+\section{Density of the Option Span}\label{sec:density}
+
+The following results are known in various forms across different fields. We present unified constructive proofs.
+
+\begin{theorem}[Density of $\mathcal{S}$ in $C([a,b])$]\label{thm:density}
+For every $f \in C([a,b])$ and $\varepsilon > 0$, there exist $N \in \mathbb{N}$, strikes $K_1,\dots,K_N \in [a,b]$, and coefficients $\alpha,\beta,w_1,\dots,w_N \in \mathbb{R}$ such that
+\[
+\sup_{x\in[a,b]} \left| f(x) - \left( \alpha + \beta x + \sum_{i=1}^N w_i (x-K_i)_+ \right) \right| < \varepsilon.
+\]
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+The proof proceeds in two steps:
+
+1. \textbf{Piecewise-linear approximation}: By uniform continuity of $f$, there exists a piecewise-linear function $s$ (linear spline) with $\|f-s\|_\infty < \varepsilon$.
+
+2. \textbf{Spline representation}: Any piecewise-linear function $s$ with knots $a=x_0 < x_1 < \cdots < x_n=b$ can be written as:
+\[
+s(x) = \alpha + \beta x + \sum_{j=1}^{n-1} \gamma_j (x-x_j)_+
+\]
+where $\alpha = s(a) - m_1 a$, $\beta = m_1$, and $\gamma_j = m_{j+1} - m_j$ for slopes $m_j = (s(x_j)-s(x_{j-1}))/(x_j-x_{j-1})$.
+
+Combining these steps yields the result. Full details are standard in spline theory.
 \end{proof}
-
-\subsection{The option basis}
-We define the primary object of study:
-
-\begin{definition}[Option-based linear span]
-The linear span
-\[\mathcal{S}:=\spanop\{1,\, x,\, \phi_K:\ K\in[a,b]\}\]
-consists of all finite linear combinations of the constant function, the identity, and hinge functions with strikes in $[a,b]$.
-\end{definition}
 
 \begin{remark}
-Since $[a,b]$ is uncountable, $\mathcal{S}$ is not a finite-dimensional space. However, any element of $\mathcal{S}$ uses only finitely many strikes.
+This theorem appears in spline theory as the density of linear B-splines, in neural network theory as the universal approximation theorem for ReLU networks (Leshno et al., 1993), and provides mathematical foundation for option-based replication in finance.
 \end{remark}
 
-\section{Theoretical foundation: Density of option-based spans}\label{sec:theory}
+\section{Approximation Rates}\label{sec:rates}
 
-\subsection{Piecewise-linear approximation lemmas}
+While density guarantees approximation in the limit, quantitative rates depend on function smoothness.
 
-\begin{lemma}[Linear-spline representation]\label{lem:spline_repr}
-Let $a=x_0<x_1<\dots<x_n=b$ be a partition and let $s$ be continuous on $[a,b]$ and affine on each interval $[x_{j-1},x_j]$. Then there exist coefficients $\alpha,\beta\in\mathbb{R}$ and $\gamma_1,\dots,\gamma_{n-1}\in\mathbb{R}$ such that for all $x\in[a,b]$
-\[s(x)=\alpha+\beta x + \sum_{j=1}^{n-1}\gamma_j\,(x-x_j)_+.\]
-Moreover, the representation is unique if we require $\alpha$ and $\beta$ to be chosen such that $s(a)=\alpha+\beta a$ and $s'(a_+)=\beta$ (right derivative at $a$).
-\end{lemma}
-
-\begin{proof}
-For $j=1,\dots,n$ define the slope on the $j$th subinterval by
-\[m_j:=\frac{s(x_j)-s(x_{j-1})}{x_j-x_{j-1}}.\]
-On each open interval $(x_{j-1},x_j)$ we have $s'(x)=m_j$.
-
-Set $\beta:=m_1$ (the initial slope) and define the slope differences
-\[\gamma_j:=m_{j+1}-m_j,\qquad j=1,\dots,n-1.\]
-
-Consider the candidate function
-\[\tilde s(x):=s(a)+\beta(x-a)+\sum_{j=1}^{n-1}\gamma_j\,(x-x_j)_+.\]
-
-We verify that $\tilde s=s$ by comparing derivatives. For $x\in(x_{k-1},x_k)$ with $1\le k\le n$, the derivative of each hinge is
-\[\frac{d}{dx}(x-x_j)_+=\begin{cases}1&\text{if }x>x_j,\\0&\text{if }x<x_j.\end{cases}\]
-
-Thus for $x\in(x_{k-1},x_k)$,
-\begin{align*}
-\tilde s'(x)&=\beta+\sum_{j=1}^{n-1}\gamma_j\mathbf{1}_{\{x>x_j\}}\\
-&=\beta+\sum_{j=1}^{k-1}\gamma_j\\
-&=m_1+\sum_{j=1}^{k-1}(m_{j+1}-m_j)\\
-&=m_k.
-\end{align*}
-
-Therefore $\tilde s'(x)=s'(x)$ for all $x\in(a,b)\setminus\{x_1,\dots,x_{n-1}\}$. This implies $\tilde s-s$ is constant on $[a,b]$. Evaluating at $x=a$ gives
-\[\tilde s(a)-s(a)=s(a)+0+0-s(a)=0,\]
-so the constant is zero and $\tilde s\equiv s$.
-
-For uniqueness, suppose $s(x)=\alpha'+\beta' x+\sum_{j=1}^{n-1}\gamma_j'(x-x_j)_+$ is another representation. Then at $x=a$, we have $\alpha'+\beta' a=s(a)$. Taking right derivatives at $a$ gives $\beta'=m_1$. Thus $\beta'=\beta$, and consequently $\alpha'=s(a)-\beta a=\alpha$. The slope differences $\gamma_j'$ are then uniquely determined by matching $s'$ on each interval.
-\end{proof}
-
-\begin{lemma}[Uniform approximation by linear splines]\label{lem:spline_approx}
-Let $f\in C([a,b])$ and $\varepsilon>0$. There exists a partition $a=x_0<\cdots<x_n=b$ and a continuous function $s$ that is affine on each subinterval $[x_{j-1},x_j]$ (the linear interpolant at the knots) such that
-\[\|f-s\|_{\infty}<\varepsilon.\]
-Furthermore, the mesh size $h:=\max_{1\le j\le n}(x_j-x_{j-1})$ can be chosen such that $h\le\delta(\varepsilon)$ for some modulus $\delta$ depending only on $f$ and $\varepsilon$.
-\end{lemma}
-
-\begin{proof}
-Since $f$ is continuous on the compact set $[a,b]$, it is uniformly continuous. By definition of uniform continuity, for any $\varepsilon>0$ there exists $\delta=\delta(\varepsilon)>0$ such that
-\[|x-y|<\delta\implies|f(x)-f(y)|<\frac{\varepsilon}{2}.\]
-
-Choose any partition $\mathcal{P}=\{x_0,x_1,\dots,x_n\}$ with $a=x_0<x_1<\cdots<x_n=b$ satisfying
-\[h:=\max_{1\le j\le n}(x_j-x_{j-1})<\delta.\]
-
-Define $s:[a,b]\to\mathbb{R}$ as the piecewise-linear interpolant:
-\[s(x_j)=f(x_j)\quad\text{for all }j=0,\dots,n,\]
-and $s$ is affine on each $[x_{j-1},x_j]$.
-
-Now let $x\in[a,b]$ be arbitrary. Then $x\in[x_{j-1},x_j]$ for some $j\in\{1,\dots,n\}$. Write
-\[x=\theta x_j+(1-\theta)x_{j-1}\]
-for some $\theta\in[0,1]$. By affinity of $s$ on this interval,
-\[s(x)=\theta s(x_j)+(1-\theta)s(x_{j-1})=\theta f(x_j)+(1-\theta)f(x_{j-1}).\]
-
-We estimate:
-\begin{align*}
-|s(x)-f(x)|&=|\theta f(x_j)+(1-\theta)f(x_{j-1})-f(x)|\\
-&\le\theta|f(x_j)-f(x)|+(1-\theta)|f(x_{j-1})-f(x)|.
-\end{align*}
-
-Since $|x-x_j|\le x_j-x_{j-1}<\delta$ and $|x-x_{j-1}|\le x_j-x_{j-1}<\delta$, the uniform continuity condition gives
-\[|f(x_j)-f(x)|<\frac{\varepsilon}{2}\quad\text{and}\quad|f(x_{j-1})-f(x)|<\frac{\varepsilon}{2}.\]
-
-Therefore,
-\[|s(x)-f(x)|<\theta\cdot\frac{\varepsilon}{2}+(1-\theta)\cdot\frac{\varepsilon}{2}=\frac{\varepsilon}{2}<\varepsilon.\]
-
-Since $x\in[a,b]$ was arbitrary, $\|f-s\|_\infty<\varepsilon$.
-\end{proof}
-
-\subsection{Main density theorem}
-
-\begin{theorem}[Density of call-based spans in $C([a,b])$]\label{thm:density}
-The linear span
-\[\mathcal{S}=\spanop\{1,\,x,\,(x-K)_+: K\in[a,b]\}\]
-is dense in $C([a,b])$ with respect to the supremum norm. Concretely: for every $f\in C([a,b])$ and every $\varepsilon>0$ there exist $N\in\mathbb{N}$, strikes $K_1,\dots,K_N\in[a,b]$ and coefficients $\alpha,\beta,w_1,\dots,w_N\in\mathbb{R}$ such that
-\[\sup_{x\in[a,b]}\left|f(x)-\Big(\alpha+\beta x+\sum_{i=1}^N w_i\,(x-K_i)_+\Big)\right|<\varepsilon.\]
+\begin{theorem}[Error bound for Hölder functions]\label{thm:holder_rate}
+Let $f \in C^{0,\alpha}([a,b])$ satisfy $|f(x)-f(y)| \leq L|x-y|^\alpha$ for some $L>0$, $\alpha \in (0,1]$. For any $n \in \mathbb{N}$, there exists $s_n \in \mathcal{S}$ using at most $n$ interior knots such that
+\[
+\|f - s_n\|_\infty \leq 2L h^\alpha,
+\]
+where $h = (b-a)/n$ is the mesh size of a uniform partition.
 \end{theorem}
 
 \begin{proof}
-Let $f\in C([a,b])$ and $\varepsilon>0$ be given. By Lemma~\ref{lem:spline_approx}, there exists a partition $a=x_0<x_1<\cdots<x_n=b$ and a piecewise-linear function $s$ with knots at $\{x_j\}$ such that $s(x_j)=f(x_j)$ for all $j$ and
-\[\|f-s\|_{\infty}<\frac{\varepsilon}{2}.\]
-
-By Lemma~\ref{lem:spline_repr}, the function $s$ admits an exact representation
-\[s(x)=\alpha+\beta x+\sum_{j=1}^{n-1}\gamma_j(x-x_j)_+,\]
-where $\alpha,\beta,\gamma_1,\dots,\gamma_{n-1}\in\mathbb{R}$ and each knot $x_j\in[a,b]$.
-
-Setting $N=n-1$, $K_i=x_i$, and $w_i=\gamma_i$ for $i=1,\dots,N$, we have $s\in\mathcal{S}$. Therefore,
-\begin{align*}
-\left\|f-\left(\alpha+\beta x+\sum_{i=1}^N w_i(x-K_i)_+\right)\right\|_\infty&=\|f-s\|_\infty\\
-&<\frac{\varepsilon}{2}\\
-&<\varepsilon.
-\end{align*}
-
-This proves that $\mathcal{S}$ is dense in $C([a,b])$.
+Take uniform partition $x_j = a + jh$, $j=0,\dots,n$. Let $s_n$ be the piecewise-linear interpolant satisfying $s_n(x_j) = f(x_j)$. For $x \in [x_{j-1}, x_j]$, write $x = \theta x_j + (1-\theta)x_{j-1}$, $\theta \in [0,1]$. Then
+\[
+|f(x)-s_n(x)| \leq |f(x)-f(x_{j-1})| + \theta|f(x_{j-1})-f(x_j)| \leq Lh^\alpha + Lh^\alpha = 2Lh^\alpha.
+\]
 \end{proof}
 
-\begin{corollary}[Closure of option span]\label{cor:closure}
-The closure of $\mathcal{S}$ in $C([a,b])$ is all of $C([a,b])$:
-\[\overline{\mathcal{S}}^{\|\cdot\|_\infty}=C([a,b]).\]
-\end{corollary}
-
-\begin{corollary}[Put-based density]
-The span $\mathcal{S}_{\text{put}}:=\spanop\{1,x,(K-x)_+:K\in[a,b]\}$ is also dense in $C([a,b])$.
-\end{corollary}
-
-\begin{proof}
-Since $(K-x)_+=K-x+\phi_K(x)$ and both $K-x$ and the constant/linear terms are in the combined span, we have $\mathcal{S}_{\text{put}}\subseteq\spanop\{1,x,\phi_K\}=\mathcal{S}$ plus additional affine terms, which doesn't enlarge the closure. Conversely, $\phi_K(x)=(K-x)_++x-K$ shows $\mathcal{S}\subseteq\mathcal{S}_{\text{put}}$ modulo affine adjustments. Thus both have the same closure.
-\end{proof}
-
-\subsection{Connection to ReLU neural networks}\label{subsec:relu_connection}
-
-The hinge function has a natural interpretation in machine learning:
-
-\begin{proposition}[Hinge as shifted ReLU]
-The hinge function is exactly a shifted Rectified Linear Unit (ReLU):
-\[\phi_K(x) = (x-K)_+ = \max(x-K, 0) = \text{ReLU}(x-K),\]
-where $\text{ReLU}(z) := \max(z, 0)$ is the standard ReLU activation function.
-\end{proposition}
-
-\begin{corollary}[Option portfolios as shallow neural networks]
-Any function in the option span $\mathcal{S}$ has the form
-\[g(x) = \alpha + \beta x + \sum_{i=1}^N w_i \cdot \phi_{K_i}(x) = \alpha + \beta x + \sum_{i=1}^N w_i \cdot \text{ReLU}(x - K_i).\]
-This is precisely a \textbf{one-hidden-layer ReLU neural network} with:
-\begin{itemize}
-    \item Input: $x \in \mathbb{R}$ (single neuron)
-    \item Hidden layer: $N$ neurons with activations $\text{ReLU}(x - K_i)$ and biases $-K_i$
-    \item Output layer: affine combination $\alpha + \beta x + \sum_{i=1}^N w_i \cdot (\text{hidden}_i)$
-\end{itemize}
-\end{corollary}
-
-\begin{remark}[Universal Approximation Theorem]
-The Universal Approximation Theorem (UAT) for neural networks states that shallow ReLU networks are universal approximators for continuous functions on compact domains. Our density result (Theorem~\ref{thm:density}) is therefore a direct consequence of the UAT.
-
-In the Lean~4 formalization (Section~\ref{sec:lean}), we make this connection explicit by stating the UAT as an axiom (\texttt{UniversalApproximationTheoremReLU}) and deriving \texttt{density\_of\_call\_spans\_statement} from it. This approach:
-\begin{enumerate}[label=(\roman*)]
-    \item Clarifies the mathematical relationship between option pricing and machine learning
-    \item Leverages well-established results from neural network theory
-    \item Provides a conceptual bridge between quantitative finance and deep learning
-\end{enumerate}
-
-From a practical perspective, this means techniques from neural network training (gradient descent, backpropagation, regularization) can potentially be applied to option portfolio construction, and conversely, insights from option theory can inform neural network architecture design.
+\begin{remark}
+For Lipschitz functions ($\alpha=1$), the error is $O(n^{-1})$. Smoother functions achieve better rates; for $f \in C^2([a,b])$, one can achieve $O(n^{-2})$ through the integral representation below.
 \end{remark}
 
-\subsection{Quantitative estimates}
+\section{Integral Representation}\label{sec:integral}
 
-\begin{theorem}[Convergence rate for Hölder continuous functions]\label{thm:holder_rate}
-Let $f\in C([a,b])$ satisfy a Hölder condition of order $\alpha\in(0,1]$:
-\[|f(x)-f(y)|\le L|x-y|^\alpha\quad\text{for all }x,y\in[a,b],\]
-where $L>0$ is the Hölder constant. Then for any $n\in\mathbb{N}$, there exists a piecewise-linear spline $s_n$ with at most $n$ interior knots such that
-\[\|f-s_n\|_\infty\le C L h^\alpha,\]
-where $h=(b-a)/n$ is the mesh size and $C>0$ is a universal constant.
-\end{theorem}
+For twice-differentiable functions, an exact representation provides additional insight.
 
-\begin{proof}
-Take a uniform partition with $x_j=a+jh$ for $j=0,\dots,n$, where $h=(b-a)/n$. Let $s_n$ be the piecewise-linear interpolant. For $x\in[x_{j-1},x_j]$, write $x=\theta x_j+(1-\theta)x_{j-1}$ with $\theta\in[0,1]$. Then
-\begin{align*}
-|f(x)-s_n(x)|&=|f(x)-\theta f(x_j)-(1-\theta)f(x_{j-1})|\\
-&\le|f(x)-f(x_{j-1})|+\theta|f(x_{j-1})-f(x_j)|\\
-&\le L|x-x_{j-1}|^\alpha+L|x_j-x_{j-1}|^\alpha\\
-&\le L h^\alpha+L h^\alpha=2Lh^\alpha.
-\end{align*}
-Thus $\|f-s_n\|_\infty\le 2Lh^\alpha$ with $C=2$.
-\end{proof}
-
-\begin{theorem}[Convergence rate for $C^2$ functions]\label{thm:c2_rate}
-Let $f\in C^2([a,b])$. For the uniform partition with mesh $h=(b-a)/n$ and piecewise-linear interpolant $s_n$, we have
-\[\|f-s_n\|_\infty\le\frac{1}{8}\|f''\|_\infty h^2.\]
-\end{theorem}
-
-\begin{proof}
-Fix $j$ and $x\in[x_{j-1},x_j]$. By Taylor's theorem with remainder, for some $\xi_1\in(x_{j-1},x)$ and $\xi_2\in(x,x_j)$,
-\begin{align*}
-f(x)&=f(x_{j-1})+f'(x_{j-1})(x-x_{j-1})+\frac{f''(\xi_1)}{2}(x-x_{j-1})^2,\\
-f(x_j)&=f(x_{j-1})+f'(x_{j-1})(x_j-x_{j-1})+\frac{f''(\xi_2)}{2}(x_j-x_{j-1})^2.
-\end{align*}
-
-The linear interpolant satisfies
-\[s_n(x)=f(x_{j-1})+\frac{f(x_j)-f(x_{j-1})}{x_j-x_{j-1}}(x-x_{j-1}).\]
-
-Substituting the Taylor expansion of $f(x_j)$,
-\[s_n(x)=f(x_{j-1})+\left(f'(x_{j-1})+\frac{f''(\xi_2)}{2}(x_j-x_{j-1})\right)(x-x_{j-1}).\]
-
-Therefore,
-\begin{align*}
-f(x)-s_n(x)&=\frac{f''(\xi_1)}{2}(x-x_{j-1})^2-\frac{f''(\xi_2)}{2}(x_j-x_{j-1})(x-x_{j-1})\\
-&=\frac{1}{2}(x-x_{j-1})\left[f''(\xi_1)(x-x_{j-1})-f''(\xi_2)(x_j-x_{j-1})\right].
-\end{align*}
-
-Using $|f''(\xi)|\le\|f''\|_\infty$ for all $\xi$ and $|x-x_{j-1}|\le h$, $|x_j-x_{j-1}|=h$,
-\[|f(x)-s_n(x)|\le\frac{1}{2}h\cdot 2\|f''\|_\infty h=\|f''\|_\infty h^2.\]
-
-A sharper estimate using the maximum principle for the error in linear interpolation gives the factor $1/8$ instead of $1$.
-\end{proof}
-
-\section{Integral representation for smoother functions}\label{sec:integral}
-
-\subsection{Green's function approach}
-
-\begin{proposition}[Representation via second derivative]\label{prop:integral_repr}
-Let $f\in C^2([a,b])$. Then for all $x\in[a,b]$,
-\[f(x)=f(a)+f'(a)(x-a)+\int_a^b (x-t)_+ f''(t)\,dt.\]
-
-\textit{This result has been completely verified in Lean~4 (see Section~\ref{sec:lean}, theorem \texttt{integral\_representation\_C2\_statement}).}
+\begin{proposition}[Integral representation]\label{prop:integral_repr}
+Let $f \in C^2([a,b])$. Then for all $x \in [a,b]$,
+\[
+f(x) = f(a) + f'(a)(x-a) + \int_a^x (x-t) f''(t) \, dt.
+\]
 \end{proposition}
 
 \begin{proof}
-Define
-\[g(x):=f(a)+f'(a)(x-a)+\int_a^b (x-t)_+ f''(t)\,dt.\]
-
-For $x\in[a,b]$, the integral becomes
-\[\int_a^b(x-t)_+f''(t)\,dt=\int_a^x(x-t)f''(t)\,dt.\]
-
-Differentiate with respect to $x$ using Leibniz's rule:
-\begin{align*}
-g'(x)&=f'(a)+\frac{d}{dx}\int_a^x(x-t)f''(t)\,dt\\
-&=f'(a)+\int_a^x f''(t)\,dt+(x-x)f''(x)\\
-&=f'(a)+\int_a^x f''(t)\,dt\\
-&=f'(a)+[f'(x)-f'(a)]\\
-&=f'(x).
-\end{align*}
-
-Also, $g(a)=f(a)+0+0=f(a)$. Since $g$ and $f$ have the same derivative and the same value at $a$, they coincide on $[a,b]$.
+Define $g(x) = f(a) + f'(a)(x-a) + \int_a^x (x-t) f''(t) \, dt$. Differentiating and applying the Fundamental Theorem of Calculus gives $g'(x) = f'(x)$. Since $g(a) = f(a)$, we have $g \equiv f$.
 \end{proof}
 
-\begin{theorem}[Extended representation for Sobolev functions]\label{thm:sobolev_repr}
-Let $f\in W^{2,1}([a,b])$ (the Sobolev space of functions with $f,f',f''\in L^1$, where $f''$ is understood in the weak sense). Then
-\[f(x)=f(a)+f'(a)(x-a)+\int_a^b(x-t)_+\,df'',\]
-where $df''$ is the distributional derivative (a signed Radon measure).
-\end{theorem}
+This representation shows $f''$ acts as a density for hinge functions, since $(x-t) = \int_t^x ds$ and $(x-t)_+$ appears naturally when $x > t$.
 
-\begin{proof}
-For $f\in W^{2,1}$, the weak second derivative $f''$ is a finite signed measure $\mu$. The representation follows from integration by parts in the distributional sense. The proof proceeds as for $C^2$ functions but uses the Radon-Nikodym theorem and the fundamental theorem of calculus for BV functions.
-\end{proof}
+\begin{remark}[Formal verification]
+Proposition~\ref{prop:integral_repr} has been formally verified in Lean~4 using Mathlib's interval integral library. The 72-line proof handles all technical details of differentiation under the integral sign and application of the Fundamental Theorem of Calculus.
+\end{remark}
 
-\subsection{Discretization and Riemann sums}
-
-\begin{proposition}[Discretization via Riemann sums]\label{prop:riemann_discrete}
-Let $f\in C^2([a,b])$ and let $\mathcal{P}_n=\{t_i\}_{i=1}^{n-1}\subset(a,b)$ be sample points with $a<t_1<\cdots<t_{n-1}<b$. Set $t_0=a$, $t_n=b$, and $\Delta_i=t_i-t_{i-1}$ for $i=1,\dots,n$. Define weights $w_i=f''(t_i)\Delta_i$ for a choice of sample point in each subinterval. Then the finite sum
-\[f_n(x):=f(a)+f'(a)(x-a)+\sum_{i=1}^{n-1} w_i(x-t_i)_+\]
-satisfies
-\[\|f-f_n\|_\infty\to 0\quad\text{as }\max_i\Delta_i\to 0.\]
-\end{proposition}
-
-\begin{proof}
-By Proposition~\ref{prop:integral_repr},
-\[f(x)-f_n(x)=\int_a^b(x-t)_+f''(t)\,dt-\sum_{i=1}^{n-1}w_i(x-t_i)_+.\]
-
-For fixed $x$, define $F(t):=(x-t)_+f''(t)$ for $t\in[a,b]$. The right-hand side is the error in approximating $\int_a^b F(t)\,dt$ by a Riemann sum. Since $f''\in C([a,b])$, the integrand $F$ is continuous in $t$ (for fixed $x$).
-
-For any $\varepsilon>0$, by uniform continuity of $f''$ on $[a,b]$, there exists $\delta>0$ such that $\max_i\Delta_i<\delta$ implies the Riemann sum approximation error is less than $\varepsilon(b-a)$ uniformly in $x\in[a,b]$ (using the boundedness of $(x-t)_+\le b-a$).
-
-More precisely, for $x\in[a,b]$ and mesh $\max_i\Delta_i\le\delta$,
-\begin{align*}
-\left|\int_a^b(x-t)_+f''(t)\,dt-\sum_{i=1}^{n-1}f''(t_i)\Delta_i(x-t_i)_+\right|&\le\sum_{i=1}^{n-1}\int_{t_{i-1}}^{t_i}|(x-t)_+f''(t)-(x-t_i)_+f''(t_i)|\,dt\\
-&\le(b-a)\cdot\omega_{f''}(\delta),
-\end{align*}
-where $\omega_{f''}$ is the modulus of continuity of $f''$. Since $f''\in C([a,b])$, $\omega_{f''}(\delta)\to 0$ as $\delta\to 0$. Thus $\|f-f_n\|_\infty\to 0$.
-\end{proof}
-
-\begin{corollary}[Convergence rate for Riemann discretization]
-Under the assumptions of Proposition~\ref{prop:riemann_discrete}, if $f\in C^2([a,b])$, then
-\[\|f-f_n\|_\infty\le C\|f''\|_\infty(\max_i\Delta_i)\]
-for a constant $C$ depending on $b-a$.
+\begin{corollary}[Riemann approximation]
+For any partition $a = t_0 < t_1 < \cdots < t_n = b$, define
+\[
+f_n(x) = f(a) + f'(a)(x-a) + \sum_{i=1}^{n-1} w_i (x-t_i)_+,
+\]
+where $w_i = f''(\xi_i)(t_i - t_{i-1})$ for some $\xi_i \in (t_{i-1}, t_i)$. Then as $\max_i (t_i - t_{i-1}) \to 0$, we have $\|f - f_n\|_\infty \to 0$.
 \end{corollary}
 
-\section{Completeness in other topologies}\label{sec:completeness}
+\section{Interdisciplinary Connections}\label{sec:connections}
 
-\subsection{$L^p$ density}
+\subsection{Equivalence of Representations}
 
-\begin{theorem}[$L^p$ density of option basis]\label{thm:lp_density}
-For $1\le p<\infty$, the span $\mathcal{S}$ is dense in $L^p([a,b])$.
-\end{theorem}
+The mathematical identity $\phi_K(x) = (x-K)_+ = \text{ReLU}(x-K)$ establishes:
 
-\begin{proof}
-Since $C([a,b])$ is dense in $L^p([a,b])$ for $1\le p<\infty$ and $\mathcal{S}$ is dense in $C([a,b])$ (Theorem~\ref{thm:density}), the result follows by transitivity: for any $f\in L^p$, approximate by $g\in C([a,b])$ within $\varepsilon/2$, then approximate $g$ by $s\in\mathcal{S}$ in sup-norm (hence also in $L^p$-norm) within $\varepsilon/2$.
-\end{proof}
-
-\subsection{Convex functions}
-
-\begin{theorem}[Approximation of convex functions]\label{thm:convex_approx}
-Let $f:[a,b]\to\mathbb{R}$ be convex. Then $f$ can be uniformly approximated by functions of the form
-\[g_n(x)=\alpha_n+\beta_n x+\sum_{i=1}^{n-1}\gamma_{n,i}(x-K_{n,i})_+\]
-with $\gamma_{n,i}\ge 0$ for all $i$ (nonnegative option weights).
-\end{theorem}
-
-\begin{proof}
-A convex function on a compact interval is continuous, so by Theorem~\ref{thm:density} it can be uniformly approximated by elements of $\mathcal{S}$. Moreover, the piecewise-linear interpolant $s_n$ of a convex function is also convex, and a convex piecewise-linear function has nondecreasing slopes, i.e., $m_{j+1}\ge m_j$. By the proof of Lemma~\ref{lem:spline_repr}, the weights $\gamma_j=m_{j+1}-m_j\ge 0$. Thus the approximating portfolio has nonnegative option weights, corresponding to a long position in calls.
-\end{proof}
-
-\section{Optimality and best approximation}\label{sec:optimality}
-
-\subsection{Best uniform approximation}
-
-\begin{definition}[Best approximation]
-For $f\in C([a,b])$ and a finite-dimensional subspace $V\subset C([a,b])$, the best approximation to $f$ in $V$ is the element $g^*\in V$ satisfying
-\[\|f-g^*\|_\infty=\min_{g\in V}\|f-g\|_\infty.\]
-\end{definition}
-
-\begin{theorem}[Existence and uniqueness of best approximation]\label{thm:best_approx}
-Let $V=\spanop\{1,x,\phi_{K_1},\dots,\phi_{K_N}\}$ be the finite-dimensional subspace spanned by fixed strikes $K_1,\dots,K_N\in[a,b]$. Then for any $f\in C([a,b])$, there exists a unique best approximation $g^*\in V$.
-\end{theorem}
-
-\begin{proof}
-Existence follows from compactness: the unit ball in the finite-dimensional normed space $V$ is compact, and the map $g\mapsto\|f-g\|_\infty$ is continuous. Uniqueness follows from strict convexity of the norm $\|\cdot\|_\infty$ on finite-dimensional spaces when restricted to proper linear subspaces, or more directly from the Haar condition (the functions $\{1,x,\phi_{K_1},\dots,\phi_{K_N}\}$ form a Chebyshev system on any interval not containing more than $N+2$ points, ensuring uniqueness).
-\end{proof}
-
-\begin{theorem}[Characterization via equioscillation]\label{thm:equiosc}
-The best uniform approximation $g^*$ to $f$ from $V=\spanop\{1,x,\phi_{K_1},\dots,\phi_{K_N}\}$ is characterized by the equioscillation property: there exist at least $N+3$ points $a\le x_1<x_2<\cdots<x_m\le b$ such that
-\[f(x_i)-g^*(x_i)=(-1)^i\sigma\|f-g^*\|_\infty\]
-for some $\sigma\in\{-1,+1\}$.
-\end{theorem}
-
-\begin{proof}
-This is a consequence of the Remez exchange theorem for Chebyshev approximation. The basis functions form an extended Chebyshev system (generalized Haar system), and the standard theory applies.
-\end{proof}
-
-\subsection{Least-squares approximation}
-
-For computational purposes, we often use $L^2$ approximation instead of uniform approximation.
-
-\begin{proposition}[Least-squares solution]\label{prop:least_squares}
-Given strikes $K_1,\dots,K_N$ and sample points $\{x_j\}_{j=1}^M\subset[a,b]$, the least-squares problem
-\[\min_{\alpha,\beta,w_1,\dots,w_N}\sum_{j=1}^M\left|f(x_j)-\left(\alpha+\beta x_j+\sum_{i=1}^Nw_i(x_j-K_i)_+\right)\right|^2\]
-has a unique solution given by solving the normal equations
-\[\Phi^T\Phi\mathbf{w}=\Phi^T\mathbf{f},\]
-where $\Phi\in\mathbb{R}^{M\times(N+2)}$ is the design matrix with rows $[1,x_j,(x_j-K_1)_+,\dots,(x_j-K_N)_+]$ and $\mathbf{f}=[f(x_1),\dots,f(x_M)]^T$.
-\end{proposition}
-
-\begin{proof}
-Standard linear least-squares theory. The matrix $\Phi^T\Phi$ is positive definite (hence invertible) if the sample points $\{x_j\}$ are distinct and sufficiently many (at least $N+2$ points with appropriate distribution).
-\end{proof}
-
-\begin{remark}[Regularization]
-When $\Phi^T\Phi$ is ill-conditioned (e.g., strikes very close together), Tikhonov regularization
-\[\min_{\mathbf{w}}\|\Phi\mathbf{w}-\mathbf{f}\|_2^2+\lambda\|\mathbf{w}\|_2^2\]
-with $\lambda>0$ stabilizes the solution. The regularized solution is $\mathbf{w}=(\Phi^T\Phi+\lambda I)^{-1}\Phi^T\mathbf{f}$.
-\end{remark}
-
-\section{Extensions and generalizations}\label{sec:extensions}
-
-\subsection{Multi-asset options}
-
-\begin{definition}[Multi-asset call option]
-For $\mathbf{x}=(x_1,\dots,x_d)\in\mathbb{R}^d$ and $\mathbf{K}=(K_1,\dots,K_d)\in\mathbb{R}^d$, the multi-asset call on a basket is
-\[\phi_{\mathbf{K}}(\mathbf{x}):=\left(\sum_{i=1}^d w_i x_i-K\right)_+\]
-for weights $w_i>0$ and strike $K$.
-\end{definition}
-
-\begin{theorem}[Density in continuous functions on hypercube]
-On the hypercube $[a,b]^d$, the span of multi-asset options together with affine functions is dense in $C([a,b]^d)$.
-\end{theorem}
-
-\begin{proof}
-The proof extends the one-dimensional case using tensor products and the Stone-Weierstrass theorem. Details are technical and omitted.
-\end{proof}
-
-\subsection{Path-dependent options}
-
-For path-dependent payoffs $f(\mathbf{S})$ where $\mathbf{S}=(S_1,\dots,S_T)$ is a price path, static replication by vanilla options is generally impossible. However, approximate replication can be achieved using dynamic hedging or by approximating the continuation value at each time step using vanilla options on the current price.
-
-\section{Lean 4 Formal Verification}\label{sec:lean}
-
-We have formalized the core mathematical results in Lean~4 using the Mathlib library. The formalization provides machine-checked proofs of the foundational properties and establishes a rigorous basis for the theoretical claims.
-
-\subsection{Formalized definitions}
-
-The hinge function is defined in Lean as:
-\begin{lstlisting}[language=Haskell]
-def hinge (K : Real) (x : Real) : Real := max (x - K) 0
-\end{lstlisting}
-
-The option span is defined as the set of functions expressible as finite linear combinations:
-\begin{lstlisting}[language=Haskell]
-def OptionSpan (a b : Real) : Set (Real -> Real) :=
-  { g | exists (alpha beta : Real) (N : Nat) (Ks : Fin N -> Real) (ws : Fin N -> Real),
-      (forall i, Ks i in Set.Icc a b) /\
-      forall x, g x = alpha + beta * x +
-        (Finset.univ.sum fun i => ws i * hinge (Ks i) x) }
-\end{lstlisting}
-
-\subsection{Fully verified results}
-
-The following results have complete machine-checked proofs in Lean~4:
-
-\begin{enumerate}
-    \item \textbf{Non-negativity} (\texttt{hinge\_nonneg}): $\phi_K(x) \geq 0$ for all $x \in \mathbb{R}$.
-    \begin{lstlisting}[language=Haskell]
-lemma hinge_nonneg (K x : Real) : 0 <= hinge K x := le_max_right _ _
-    \end{lstlisting}
-
-    \item \textbf{Zero region} (\texttt{hinge\_zero\_for\_x\_le\_K}): For $x \leq K$, $\phi_K(x) = 0$.
-    \begin{lstlisting}[language=Haskell]
-lemma hinge_zero_for_x_le_K (K x : Real) (h : x <= K) : hinge K x = 0 := by
-  unfold hinge
-  rw [max_eq_right]
-  linarith
-    \end{lstlisting}
-
-    \item \textbf{Linear region} (\texttt{hinge\_linear\_for\_x\_ge\_K}): For $x \geq K$, $\phi_K(x) = x - K$.
-    \begin{lstlisting}[language=Haskell]
-lemma hinge_linear_for_x_ge_K (K x : Real) (h : K <= x) : hinge K x = x - K := by
-  unfold hinge
-  rw [max_eq_left]
-  linarith
-    \end{lstlisting}
-
-    \item \textbf{Continuity} (\texttt{hinge\_continuous}): The hinge function is continuous for all $K \in \mathbb{R}$.
-    \begin{lstlisting}[language=Haskell]
-theorem hinge_continuous (K : Real) : Continuous (hinge K) := by
-  unfold hinge
-  exact continuous_id.sub continuous_const |>.max continuous_const
-    \end{lstlisting}
-    
-    \textit{Proof strategy}: The hinge is the maximum of two continuous functions: the identity $x$ and the constant $0$. Both are continuous, and the pointwise maximum of continuous functions is continuous.
-
-    \item \textbf{Lipschitz property} (\texttt{hinge\_lipschitz}): The hinge function is Lipschitz continuous with constant $1$.
-    \begin{lstlisting}[language=Haskell]
-theorem hinge_lipschitz (K : Real) : LipschitzWith 1 (hinge K) := by
-  unfold hinge
-  apply LipschitzWith.mk_one
-  intro x y
-  calc dist (max (x - K) 0) (max (y - K) 0)
-      = |max (x - K) 0 - max (y - K) 0| := Real.dist_eq _ _
-    _ ≤ |x - K - (y - K)| := abs_max_sub_max_le_abs (x - K) (y - K) 0
-    _ = |x - y| := by ring_nf
-    _ = dist x y := (Real.dist_eq x y).symm
-    \end{lstlisting}
-    
-    \textit{Proof strategy}: We show that $|\max(a,0) - \max(b,0)| \leq |a - b|$ for any $a, b \in \mathbb{R}$. This uses the algebraic property of the maximum function. Setting $a = x - K$ and $b = y - K$, we get the desired Lipschitz bound.
-
-    \item \textbf{Finite sums} (\texttt{finite\_sum\_hinges\_continuous}): Finite sums of weighted hinge functions are continuous.
-    \begin{lstlisting}[language=Haskell]
-lemma finite_sum_hinges_continuous (N : Nat) (Ks : Fin N -> Real) (ws : Fin N -> Real) :
-    Continuous (fun x => Finset.univ.sum fun (i : Fin N) =>
-      ws i * hinge (Ks i) x) := by
-  apply continuous_finset_sum
-  intro i _
-  exact Continuous.mul continuous_const (hinge_continuous (Ks i))
-    \end{lstlisting}
-
-    \item \textbf{Portfolio continuity} (\texttt{option\_portfolio\_continuous}): Any option portfolio 
-    \[g(x) = \alpha + \beta x + \sum_{i=1}^N w_i \phi_{K_i}(x)\]
-    is continuous.
-    \begin{lstlisting}[language=Haskell]
-theorem option_portfolio_continuous (alpha beta : Real) (N : Nat) (Ks : Fin N -> Real) (ws : Fin N -> Real) :
-    Continuous (fun x : Real => alpha + beta * x +
-      Finset.univ.sum (fun (i : Fin N) => ws i * hinge (Ks i) x)) := by
-  apply Continuous.add
-  . apply Continuous.add
-    . exact continuous_const
-    . exact Continuous.mul continuous_const continuous_id
-  . exact finite_sum_hinges_continuous N Ks ws
-    \end{lstlisting}
-
-    \item \textbf{Constant functions in $C([a,b])$} (\texttt{constant\_in\_C\_ab}): For any $c \in \mathbb{R}$, the constant function $f(x) = c$ belongs to $C([a,b])$.
-
-    \item \textbf{Linear functions in $C([a,b])$} (\texttt{linear\_in\_C\_ab}): For any $m \in \mathbb{R}$, the linear function $f(x) = mx$ belongs to $C([a,b])$.
-
-    \item \textbf{Hinge restricted to $[a,b]$} (\texttt{hinge\_in\_C\_ab}): For any strike $K \in \mathbb{R}$, the hinge function $\phi_K$ restricted to $[a,b]$ belongs to $C([a,b])$.
-    \begin{lstlisting}[language=Haskell]
-theorem hinge_in_C_ab (a b K : Real) :
-    exists f : C_ab a b, forall x : Set.Icc a b, f x = hinge K (x : Real) := by
-  use <fun x => hinge K (x : Real),
-    Continuous.comp (hinge_continuous K) continuous_subtype_val>
-  intro x
-  rfl
-    \end{lstlisting}
-
-    \item \textbf{Boundedness} (\texttt{hinge\_bounded\_on\_interval}): The hinge function is bounded on $[a,b]$:
-    \[|\phi_K(x)| \leq \max(b-a, |K-a|) + (b-a) \quad \text{for all } x \in [a,b].\]
-    This result establishes that the option basis functions are controlled on the approximation domain.
-
-    \item \textbf{Integral representation for $C^2$ functions} (\texttt{integral\_representation\_C2\_statement}): For any twice-continuously differentiable function $f \in C^2([a,b])$, we have the exact representation
-    \[f(x) = f(a) + f'(a)(x-a) + \int_a^x (x-t) f''(t)\,dt \quad \text{for all } x \in [a,b].\]
-
-    This is a complete, machine-verified proof of the integral representation theorem stated as Proposition~\ref{prop:integral_repr} in Section~\ref{sec:integral}. The Lean proof establishes this representation through a careful application of the Fundamental Theorem of Calculus.
-
-    \textit{Proof strategy in Lean}: Define the auxiliary function $g(t) = f(t) + f'(t)(x-t)$ and show that:
-    \begin{enumerate}[label=(\alph*)]
-        \item $g$ is continuous on $[a,x]$ (follows from differentiability of $f$ and $f'$)
-        \item $g$ has derivative $g'(t) = (x-t)f''(t)$ on $(a,x)$ (via product rule and chain rule)
-        \item By the Fundamental Theorem of Calculus: $\int_a^x (x-t)f''(t)\,dt = g(x) - g(a)$
-        \item Computing boundary values: $g(a) = f(a) + f'(a)(x-a)$ and $g(x) = f(x)$
-        \item Rearranging yields the desired representation
-    \end{enumerate}
-
-    The proof makes essential use of Mathlib's \texttt{intervalIntegral.integral\_eq\_sub\_of\_hasDerivAt\_of\_le} theorem, which is the formalized version of the Fundamental Theorem of Calculus for interval integrals. All technical details—including continuity requirements, integrability conditions, and the verification that the derivative exists on the open interval—are rigorously checked by Lean's type system and proof checker.
-\end{enumerate}
-
-\subsection{Verification status}
-
-Table~\ref{tab:lean_status} summarizes the verification status of each result.
-
-\begin{table}[h]
-\centering
-\caption{Lean 4 verification status of core mathematical results}\label{tab:lean_status}
-\begin{tabular}{@{}lll@{}}
-\toprule
-Result & Type & Status \\
-\midrule
-\texttt{hinge\_nonneg} & Lemma & \textbf{Verified} \\
-\texttt{hinge\_zero\_for\_x\_le\_K} & Lemma & \textbf{Verified} \\
-\texttt{hinge\_linear\_for\_x\_ge\_K} & Lemma & \textbf{Verified} \\
-\texttt{hinge\_continuous} & Theorem & \textbf{Verified} \\
-\texttt{hinge\_lipschitz} & Theorem & \textbf{Verified} \\
-\texttt{finite\_sum\_hinges\_continuous} & Lemma & \textbf{Verified} \\
-\texttt{option\_portfolio\_continuous} & Theorem & \textbf{Verified} \\
-\texttt{constant\_in\_C\_ab} & Theorem & \textbf{Verified} \\
-\texttt{linear\_in\_C\_ab} & Theorem & \textbf{Verified} \\
-\texttt{hinge\_in\_C\_ab} & Theorem & \textbf{Verified} \\
-\texttt{hinge\_bounded\_on\_interval} & Lemma & \textbf{Verified} \\
-\texttt{hinge\_eq\_shifted\_relu} & Lemma & \textbf{Verified} \\
-\texttt{integral\_representation\_C2\_statement} & Theorem & \textbf{Fully Verified} \\
-\texttt{density\_of\_call\_spans\_statement} & Theorem & Via Axiom (UAT) \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Remarks on the formal verification}
-
-\begin{remark}[Universal Approximation as axiom]
-The main density result (Theorem~\ref{thm:density}) is formalized as following directly from the Universal Approximation Theorem (UAT) for ReLU networks. We introduce this as an axiom:
-\begin{lstlisting}[language=Haskell]
-axiom UniversalApproximationTheoremReLU (a b : Real) (hab : a < b)
-  (f : C_ab a b) (eps : Real) (heps : 0 < eps) :
-  exists (N : Nat) (Ks : Fin N -> Real) (alpha beta : Real) (ws : Fin N -> Real),
-    (forall i, Ks i in Set.Icc a b) /\
-    (forall x : Set.Icc a b,
-      |f x - (alpha + beta * (x : Real) +
-        Finset.univ.sum (fun i => ws i * hinge (Ks i) (x : Real)))| < eps)
-\end{lstlisting}
-
-This axiom encodes the mathematical fact that our option span (which is precisely a 1-hidden-layer ReLU network) is a universal approximator. The key observation is that $\phi_K(x) = \max(x - K, 0) = \text{ReLU}(x - K)$, making the connection explicit.
-
-The formal proof of this axiom from first principles would involve developing the theory of neural network approximation in Lean, which is a substantial undertaking. Instead, we rely on this well-established result from the literature and focus on verifying the foundational properties and their applications.
-\end{remark}
-
-\begin{remark}[Completeness of verified results]
-The set of verified results provides a solid foundation for the theoretical development:
 \begin{itemize}
-    \item \textbf{Hinge properties}: All basic properties (non-negativity, piecewise form, continuity, Lipschitz) are verified, ensuring the building blocks are sound.
-    \item \textbf{Closure properties}: We verify that finite sums and linear combinations preserve continuity, allowing construction of portfolio functions.
-    \item \textbf{Membership in $C([a,b])$}: We verify that option portfolios belong to the function space of interest, validating the approximation setup.
-    \item \textbf{Boundedness}: The boundedness result ensures control over function values, important for approximation theory.
-    \item \textbf{Integral representation}: The complete proof of the integral representation theorem for $C^2$ functions provides a rigorous constructive method for function decomposition.
+\item \textbf{Finance to ML}: Any ReLU network $g(x) = \alpha + \beta x + \sum_{i=1}^N w_i \text{ReLU}(x-K_i)$ corresponds exactly to an option portfolio with cash $\alpha$, stock position $\beta$, and $w_i$ options at strikes $K_i$.
+
+\item \textbf{ML to Approximation}: ReLU network training corresponds to finding optimal weights (and potentially strikes) for function approximation.
+
+\item \textbf{Approximation to Finance}: Optimal knot placement in spline approximation corresponds to optimal strike selection for option-based replication.
 \end{itemize}
 
-These results together establish the well-definedness of the option basis as a subset of $C([a,b])$ and provide constructive methods for approximation.
-\end{remark}
+\subsection{Interpretations of Training/Learning}
 
-\begin{remark}[Significance of the integral representation proof]
-The fully verified integral representation theorem (Theorem~\texttt{integral\_representation\_C2\_statement}) is particularly significant because:
-\begin{enumerate}[label=(\roman*)]
-    \item It provides a \textbf{constructive decomposition} of smooth functions into affine terms plus a weighted integral of hinge functions, showing explicitly how call options can represent payoffs.
-    \item The proof demonstrates that \textbf{Lean can handle complex analysis arguments} involving the Fundamental Theorem of Calculus, continuity requirements, and interval integration—essential techniques in approximation theory.
-    \item It connects directly to the \textbf{Riemann sum discretization} approach (Proposition~\ref{prop:riemann_discrete}), showing that finite option portfolios converge to the exact representation as the mesh is refined.
-    \item The verification involved subtle technical details: proving the auxiliary function $g(t) = f(t) + f'(t)(x-t)$ has the correct derivative, establishing continuity on closed intervals from differentiability, and verifying integrability conditions.
-    \item This result complements the density theorem: while the Universal Approximation Theorem (stated as axiom) establishes existence of approximations, the integral representation provides an \textbf{explicit formula} for a class of smooth functions.
-\end{enumerate}
-
-The proof spans 72 lines in the Lean file (lines 171--242 of [Basic.lean](../proof/Proof/Basic.lean)) and represents a substantial formalization effort, going beyond the foundational properties to establish a key constructive result in approximation theory.
-\end{remark}
-
-\subsection{Detailed proof walkthrough: Integral representation for $C^2$ functions}
-
-The proof of \texttt{integral\_representation\_C2\_statement} (lines 171--242 in [Basic.lean](../proof/Proof/Basic.lean)) is the most substantial result in our formalization. We present a detailed walkthrough of the proof structure.
-
-\textbf{Theorem statement:}
-Given $f \in C^2([a,b])$ with derivatives $f'$ and $f''$, for any $x \in [a,b]$,
-\[f(x) = f(a) + f'(a)(x-a) + \int_a^x (x-t)f''(t)\,dt.\]
-
-\textbf{Proof architecture:}
-
-\begin{enumerate}[label=\textbf{Step \arabic*:}]
-    \item \textbf{Define auxiliary function}. Set $g(t) := f(t) + f'(t)(x-t)$ for the fixed endpoint $x$.
-
-    \item \textbf{Establish continuity}. Prove $g$ is continuous on $[a,x]$ by showing:
-    \begin{itemize}
-        \item $f$ is continuous (follows from differentiability)
-        \item The product $f'(t) \cdot (x-t)$ is continuous (differentiable functions are continuous)
-        \item Sums of continuous functions are continuous
-    \end{itemize}
-    This step requires careful handling of interval inclusions: for $t \in [a,x]$, we must show $t \in [a,b]$ to apply the differentiability hypotheses.
-
-    \item \textbf{Compute derivative on interior}. For $t \in (a,x)$, show $g'(t) = (x-t)f''(t)$ by:
-    \begin{itemize}
-        \item Apply \texttt{HasDerivAt.add}: derivative of sum is sum of derivatives
-        \item $\frac{d}{dt}f(t) = f'(t)$ (hypothesis)
-        \item Apply \texttt{HasDerivAt.mul}: derivative of product $f'(t) \cdot (x-t)$ via product rule:
-        \[\frac{d}{dt}[f'(t)(x-t)] = f''(t)(x-t) + f'(t) \cdot (-1)\]
-        \item Combine: $g'(t) = f'(t) + f''(t)(x-t) - f'(t) = (x-t)f''(t)$
-    \end{itemize}
-
-    \item \textbf{Establish integrability}. Verify that $(x-t)f''(t)$ is interval-integrable on $[a,x]$:
-    \begin{itemize}
-        \item $(x-t)$ is continuous (affine function)
-        \item $f''$ is continuous on $[a,b]$ (hypothesis)
-        \item Product of continuous functions is continuous
-        \item Continuous functions on compact intervals are integrable
-    \end{itemize}
-    Technical subtlety: the integral domain $[a,x]$ must be contained in $[a,b]$ where $f''$ is defined.
-
-    \item \textbf{Apply Fundamental Theorem of Calculus}. Invoke Mathlib's
-    \begin{center}
-    \texttt{intervalIntegral.integral\_eq\_sub\_of\_hasDerivAt\_of\_le}
-    \end{center}
-    which states: if $g$ is continuous on $[a,x]$ and has derivative $h(t)$ on $(a,x)$, and $h$ is integrable, then
-    \[\int_a^x h(t)\,dt = g(x) - g(a).\]
-    Applying this with $h(t) = (x-t)f''(t)$ gives:
-    \[\int_a^x (x-t)f''(t)\,dt = g(x) - g(a).\]
-
-    \item \textbf{Evaluate boundary values}. Compute:
-    \begin{align*}
-    g(a) &= f(a) + f'(a)(x-a) \\
-    g(x) &= f(x) + f'(x) \cdot 0 = f(x)
-    \end{align*}
-
-    \item \textbf{Conclude}. Substituting into the FTC result:
-    \[\int_a^x (x-t)f''(t)\,dt = f(x) - [f(a) + f'(a)(x-a)].\]
-    Rearranging yields the desired representation:
-    \[f(x) = f(a) + f'(a)(x-a) + \int_a^x (x-t)f''(t)\,dt. \qquad \square\]
-\end{enumerate}
-
-\textbf{Formalization challenges addressed:}
 \begin{itemize}
-    \item \textit{Type discipline}: Managing subtype coercions from $\text{Icc } a b$ (closed interval type) to $\mathbb{R}$
-    \item \textit{Interval containment}: Proving $[a,x] \subseteq [a,b]$ when $x \in [a,b]$
-    \item \textit{Continuity from differentiability}: Extracting \texttt{ContinuousAt} from \texttt{HasDerivAt}
-    \item \textit{Integrability conditions}: Verifying all hypotheses of the FTC theorem
-    \item \textit{Equational reasoning}: Using Lean's \texttt{calc} mode for step-by-step algebraic verification
+\item \textbf{Neural Network Training}: Learning weights $w_i$ and biases $K_i$ to minimize $\|f - g\|$
+
+\item \textbf{Option Portfolio Optimization}: Selecting strikes $K_i$ and notionals $w_i$ to replicate payoff $f$
+
+\item \textbf{Spline Approximation}: Choosing knots $K_i$ and coefficients $w_i$ for piecewise-linear interpolation
 \end{itemize}
 
-This proof demonstrates that Lean can handle sophisticated analysis arguments involving calculus, continuity, integrability, and the interplay between local (derivative at a point) and global (integral over interval) properties.
+These are mathematically identical problems, suggesting potential for cross-pollination of techniques.
 
-\subsection{Building and checking the proofs}
+\section{Formal Verification}\label{sec:verification}
+We have verified selected results in 
+Lean~4 using Mathlib. While these verifications do not constitute mathematical 
+novelty, they demonstrate the feasibility of formalizing financial mathematics 
+concepts and provide rigorous checking of reasoning about integrals and derivatives.
 
-The Lean proofs are organized in the file \texttt{Basic.lean} and can be built using:
-\begin{lstlisting}[language=bash]
-cd proof
-lake build
-\end{lstlisting}
+The verified results include the integral representation (Proposition~\ref{prop:integral_repr}) 
+and basic properties of the hinge function. The Lean code is available at 
+\url{https://github.com/HenryR2112/option_fitter/tree/main/proof}.
 
-All verified results produce no errors during compilation. The proof file is self-contained except for dependencies on Mathlib~4 (the standard library for Lean~4 mathematics).
+\section{Software Implementation and Practical Demonstration}\label{sec:software}
 
-\subsection{Key insights from the formalization}
+The unified perspective presented in the previous sections is not merely theoretical. To demonstrate its practical utility and to provide a tool for exploration, we have developed a comprehensive, open-source Python library and application. This software directly embodies the equivalence between option portfolios, spline approximations, and neural networks, enabling practical payoff decomposition, pricing, and risk analysis.
 
-The Lean formalization clarifies several important points:
+\subsection{System Overview and Design}
 
-\begin{enumerate}
-    \item \textbf{Type discipline}: Working in Lean forces precise type handling. The continuous functions on $[a,b]$ are represented as the type \texttt{C(Set.Icc a b, Real)}, which embeds the compactness of the domain into the type itself.
+The software system is structured around a central \texttt{OptionsFunctionApproximator} class. Its primary function is to solve the regularized least-squares problem associated with Theorem~\ref{thm:density}:
+\[
+\min_{\mathbf{w}} \sum_{j=1}^{M} \left| f(x_j) - \sum_{i=1}^{N} w_i \, \phi_{K_i}(x_j) \right|^2 + \lambda \|\mathbf{w}\|^2,
+\]
+where $\phi_{K_i}$ are the selected basis functions (calls, puts, stock position). The system is designed to be extensible, supporting not only the canonical hinge functions but also additional bases like Gaussian kernels or sigmoids, facilitating a comparison of approximation methods.
 
-    \item \textbf{Constructivity}: The hinge function definition is direct and computable: \texttt{max (x - K) 0}. This computability carries through to portfolio evaluations, enabling practical computation.
+\subsection{Core Functionality: From Theory to Practice}
 
-    \item \textbf{Modularity}: Each lemma builds on prior results. The continuity of portfolios follows from the continuity of individual hinges and closure properties of continuous functions. This modularity reflects good mathematical practice and aids understanding.
+\paragraph{Approximation Engine}
+The core algorithm takes a target function $f$, a set of strikes $\{K_i\}$ (which can be uniformly spaced or user-defined), and computes the optimal portfolio weights $\mathbf{w}$. This process is the computational realization of the constructive density proof, providing a tangible numerical counterpart to the theoretical approximation guarantees.
 
-    \item \textbf{Norm structures}: The formalization makes explicit use of the supremum norm on $C([a,b])$ through Mathlib's \texttt{PseudoMetricSpace} instance, which in turn connects to uniform approximation concepts used in the theoretical proofs.
-\end{enumerate}
-
-\subsection{Building the proofs}
-
-The Lean proofs can be built using:
-\begin{lstlisting}[language=bash]
-cd proof
-lake build
-\end{lstlisting}
-
-The proofs depend on Mathlib and require Lean 4 (version specified in \texttt{lean-toolchain}).
-
-\section{Software Implementation}\label{sec:software}
-
-We provide a comprehensive Python implementation for practical function approximation using option portfolios.
-
-\subsection{Architecture}
-
-The implementation consists of two main components:
-\begin{enumerate}
-    \item \textbf{Core library} (\texttt{options\_func\_maker.py}): The mathematical engine for function approximation.
-    \item \textbf{GUI application} (\texttt{options\_gui.py}): Interactive visualization and analysis interface.
-\end{enumerate}
-
-\subsection{Core approximation algorithm}
-
-The \texttt{OptionsFunctionApproximator} class implements the least-squares approximation described in Proposition~\ref{prop:least_squares}. Given a target function $f$ and $N$ strikes $K_1, \ldots, K_N$, it:
-
-\begin{enumerate}
-    \item Constructs the design matrix $\Phi$ with basis functions:
-    \begin{itemize}
-        \item Constant term (cash position)
-        \item Linear term (stock position)
-        \item Call payoffs $(x - K_i)_+$ for each strike
-        \item Put payoffs $(K_i - x)_+$ for each strike
-        \item Optional: Gaussians, sigmoids, polynomials
-    \end{itemize}
-
-    \item Solves the regularized least-squares problem:
-    \[\min_{\mathbf{w}} \|\Phi \mathbf{w} - \mathbf{f}\|_2^2 + \lambda \|\mathbf{w}\|_2^2\]
-
-    \item Returns the optimal weights and mean squared error.
-\end{enumerate}
-
-\subsection{Black-Scholes pricing integration}
-
-The implementation includes full Black-Scholes pricing for computing replication costs:
-\begin{align}
-C(S, K, T, r, \sigma) &= S \, N(d_1) - K e^{-rT} N(d_2), \\
-P(S, K, T, r, \sigma) &= K e^{-rT} N(-d_2) - S \, N(-d_1),
-\end{align}
-where
-\[d_1 = \frac{\ln(S/K) + (r + \sigma^2/2)T}{\sigma\sqrt{T}}, \quad d_2 = d_1 - \sigma\sqrt{T}.\]
-
-\subsection{Portfolio Greeks}
-
-The software computes portfolio-level risk sensitivities:
+\paragraph{Pricing and Risk Analytics}
+Moving beyond payoff replication, the system integrates the Black-Scholes model to assign monetary value and risk metrics to the synthesized portfolio. For each option in the portfolio, it calculates:
 \begin{itemize}
-    \item \textbf{Delta} ($\Delta$): $\sum_i w_i \cdot \Delta_i$ --- price sensitivity
-    \item \textbf{Gamma} ($\Gamma$): $\sum_i w_i \cdot \Gamma_i$ --- delta sensitivity
-    \item \textbf{Vega} ($\mathcal{V}$): $\sum_i w_i \cdot \mathcal{V}_i$ --- volatility sensitivity
-    \item \textbf{Theta} ($\Theta$): $\sum_i w_i \cdot \Theta_i$ --- time decay
+    \item \textbf{Premium}: The theoretical cost (or credit) for entering the position.
+    \item \textbf{Greeks}: First- and second-order sensitivities (Delta, Gamma, Vega, Theta) of the portfolio's value.
 \end{itemize}
+This transforms a mathematical approximation into a tractable financial instrument, complete with cost analysis and risk exposure reports. The total portfolio cost and its decomposition provide immediate insight into the economic feasibility of a given replication.
 
-\subsection{Usage example}
-
-\begin{lstlisting}[language=Python]
-from options_func_maker import OptionsFunctionApproximator
-import numpy as np
-
-# Create approximator
-approx = OptionsFunctionApproximator(
-    n_options=15,
-    price_range=(0, 2*np.pi),
-    use_calls=True,
-    use_puts=True,
-    S0=100.0,      # Current stock price
-    r=0.05,        # Risk-free rate
-    T=0.25,        # Time to expiration
-    sigma=0.2      # Volatility
-)
-
-# Approximate sin(x)
-weights, mse = approx.approximate(np.sin, n_points=1000)
-print(f"RMSE: {np.sqrt(mse):.6f}")
-
-# Get portfolio cost and Greeks
-print(f"Total Cost: ${approx.get_total_cost():,.2f}")
-greeks = approx.calculate_portfolio_greeks()
-print(f"Delta: {greeks['delta']:.4f}")
-\end{lstlisting}
-
-\subsection{GUI features}
-
-The graphical interface provides:
+\paragraph{Interactive GUI Application}
+To make the synthesis accessible, a professional graphical user interface (GUI) is provided (see Figure~\ref{fig:gui_screenshot}). The GUI allows users to:
 \begin{itemize}
-    \item Function selection (presets and custom expressions)
-    \item Real-time visualization with interactive charts
-    \item Parameter controls for price range, number of options, and Black-Scholes parameters
-    \item Tabbed results view (summary, option breakdown, Greeks, details)
-    \item CSV export functionality
+    \item Select from predefined target functions (e.g., sinusoidal payoffs, option spreads) or define custom ones.
+    \item Adjust financial parameters (risk-free rate, volatility, time to expiry) and approximation parameters (number of options, strike range, regularization).
+    \item Visualize, in real-time, the quality of the approximation alongside the constituent option payoffs.
+    \item Inspect detailed tables of option positions, costs, and aggregated Greek exposures.
 \end{itemize}
+This interface serves as a direct bridge, allowing practitioners to experiment with the mathematical concepts without writing code.
 
-\section{Experimental validation}\label{sec:experiments}
-
-\subsection{Experimental setup}
-We implemented the approximation using least-squares fitting over a dense grid of sample points. The basis consists of:
-\begin{itemize}
-\item A constant term (cash position)
-\item A linear term (stock position)
-\item Call option payoffs $(x-K_i)_+$ at evenly spaced strikes $K_i\in[a,b]$
-\item Put option payoffs $(K_i-x)_+$ at the same strikes
-\end{itemize}
-
-The weights are determined by solving the regularized least-squares problem
-\[\min_{\alpha,\beta,\{w_i\}} \sum_{j=1}^{M} \left|f(x_j) - \left(\alpha + \beta x_j + \sum_{i=1}^{N} w_i \phi_{K_i}(x_j)\right)\right|^2 + \lambda \sum_{i=1}^{N} w_i^2,\]
-where $\{x_j\}_{j=1}^{M}$ are sample points, $\phi_{K_i}$ are the option payoffs, and $\lambda=10^{-6}$ is a small regularization parameter to stabilize the solution.
-
-\subsection{Results for sinusoidal function}
-We tested the approximation on the function $f(x)=\sin(x)$ over the interval $[0,2\pi]$, which is a smooth $C^\infty$ function. This function serves as a representative example of the class of continuous functions covered by Theorem~\ref{thm:density}. The results, shown in Table~\ref{tab:results}, demonstrate clear convergence as the number of options increases.
-
-\begin{table}[h]
-\centering
-\caption{Convergence of RMSE for approximating $\sin(x)$ on $[0,2\pi]$}\label{tab:results}
-\begin{tabular}{@{}ccc@{}}
-\toprule
-Number of Options & RMSE & MSE \\
-\midrule
-4 & 0.1263 & $1.60 \times 10^{-2}$ \\
-8 & 0.0229 & $5.23 \times 10^{-4}$ \\
-12 & 0.0089 & $7.90 \times 10^{-5}$ \\
-16 & 0.0047 & $2.22 \times 10^{-5}$ \\
-24 & 0.0020 & $3.93 \times 10^{-6}$ \\
-32 & 0.0011 & $1.18 \times 10^{-6}$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Convergence analysis}
-
-The experimental results show that:
-\begin{enumerate}
-\item The RMSE decreases monotonically as the number of options increases, consistent with Theorem~\ref{thm:density}.
-\item With just 8 options, the RMSE is already below 0.023, demonstrating practical effectiveness.
-\item With 32 options, the RMSE reaches approximately 0.001, showing high accuracy.
-\item The convergence appears to follow $\text{RMSE}\approx C/N$ for large $N$, consistent with Theorem~\ref{thm:c2_rate} predicting $O(h^2)=O(1/N^2)$ convergence in the infinity norm (which is stronger than $L^2$ convergence).
-\end{enumerate}
-
-Figure~\ref{fig:convergence} visualizes this convergence, showing the RMSE as a function of the number of options.
-
-\begin{figure}[h]
-\centering
-\includegraphics[width=0.7\textwidth]{experiments/rmse_vs_n.png}
-\caption{Convergence of RMSE versus number of options for approximating $\sin(x)$ on $[0,2\pi]$. The plot demonstrates the theoretical prediction that increasing the number of basis functions (strikes) improves approximation accuracy.}\label{fig:convergence}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\linewidth]{image1.png}
+    \caption{A view of the interactive GUI for the Options Function Approximator. The main chart shows the target payoff (blue) against the portfolio approximation (orange). Side panels display the portfolio's composition, costs, and risk sensitivities (Greeks).}
+    \label{fig:gui_screenshot}
 \end{figure}
 
-\subsection{Convergence rate verification}
+\subsection{Bridging the Disciplines in Practice}
 
-To verify the theoretical convergence rate from Theorem~\ref{thm:c2_rate}, we fit a power law $\text{RMSE} = C \cdot N^{-\alpha}$ to the experimental data. The fitted exponent is $\alpha \approx 1.8$, close to the theoretical prediction of $\alpha = 2$ for $C^2$ functions. The slight discrepancy is attributable to:
+The software explicitly connects the three fields highlighted in this paper:
 \begin{itemize}
-    \item Using RMSE (an $L^2$-type norm) rather than the supremum norm
-    \item Finite sample effects from the discretization
-    \item Regularization effects
+    \item \textbf{Finance}: It produces a tradable option portfolio with standard risk metrics.
+    \item \textbf{Approximation Theory}: It solves a regularized linear approximation problem, where strike points act as spline knots.
+    \item \textbf{Machine Learning}: The approximation engine is, algorithmically, equivalent to training a single-layer ReLU network with fixed biases (strikes) via linear regression. The learned weights correspond directly to option notionals.
+\end{itemize}
+By outputting both the mathematical approximation error and the financial cost/Greeks, the tool allows users to navigate the inherent trade-off between accuracy and practicality, a central concern in applied financial engineering.
+
+\subsection{Applications and Extensibility}
+
+The primary use cases include \textbf{structured product decomposition} for risk management, \textbf{educational exploration} of payoff replication, and as a \textbf{prototyping tool} for designing custom derivative strategies. The modular architecture allows researchers to easily extend the system with new basis functions or alternative pricing models, making it a platform for further research at the intersection of these fields.
+
+The complete source code, installation instructions, and documentation are available at: \url{https://github.com/HenryR2112/option_fitter}. This implementation serves as both a proof-of-concept for the theoretical synthesis and a practical tool for its application.
+\section{Conclusion and Future Directions}\label{sec:conclusion}
+
+\subsection{Summary}
+
+We have presented a unified framework showing that European call option payoffs, linear B-splines, and ReLU activations are mathematically identical as the hinge function $\phi_K(x) = (x-K)_+$. The density of their linear span in $C([a,b])$ is known in each field separately; our contribution is to make the connections explicit and provide a coherent exposition.
+
+\subsection{Limitations}
+
+The theoretical framework assumes:
+\begin{itemize}
+\item Continuous strike availability (real markets have discrete strikes)
+\item No transaction costs or liquidity constraints
+\item Single underlying asset (univariate functions)
+\item Static portfolios (no time dimension)
 \end{itemize}
 
-\subsection{Additional test cases}
+\subsection{Potential Research Directions}
 
-\begin{example}[Piecewise constant function]
-For a step function $f(x)=\sum_{i=1}^k c_i\mathbf{1}_{[a_i,a_{i+1})}(x)$, the option basis can approximate arbitrarily well using strikes near the discontinuities. The convergence is limited by the Gibbs phenomenon near jumps.
-\end{example}
-
-\begin{example}[Polynomial function]
-For $f(x)=x^3$ on $[0,1]$, the approximation converges rapidly. With 16 options, RMSE $<10^{-4}$.
-\end{example}
-
-\begin{example}[Piecewise-linear target]
-For a piecewise-linear function with knots $\{K_i\}$, using strikes exactly at the knots yields exact representation (zero error), confirming Lemma~\ref{lem:spline_repr}.
-\end{example}
-
-\section{Numerical considerations and algorithms}
-
-\subsection{Strike selection strategies}
-
+The connections highlighted here suggest several directions for future investigation:
 \begin{enumerate}
-\item \textbf{Uniform strikes}: $K_i=a+i(b-a)/N$ for $i=1,\dots,N-1$. Simple but may be inefficient for non-uniform curvature.
+\item \textbf{Strike/knot placement}: The problem of optimally placing a limited 
+number of strikes $K_i$ to approximate a given function $f$ appears in all three 
+fields but with different terminology and techniques.
 
-\item \textbf{Adaptive strikes}: Place more strikes in regions of high curvature $|f''|$. For $f\in C^2$, define density $\rho(x)=|f''(x)|/\int_a^b|f''(t)|dt$ and choose strikes via inverse transform sampling.
+\item \textbf{Constrained approximation}: Real option markets impose constraints 
+(discrete strikes, transaction costs) that could inform constrained versions of 
+spline approximation or neural network training.
 
-\item \textbf{Optimal strike placement}: Solve
-\[\min_{K_1,\dots,K_N}\min_{\alpha,\beta,w_1,\dots,w_N}\|f-(\alpha+\beta x+\sum w_i\phi_{K_i})\|_\infty.\]
-This is a nonlinear optimization problem, typically solved by alternating between fixing strikes and optimizing weights.
+\item \textbf{Interpretable machine learning}: The equivalence between ReLU networks 
+and option portfolios suggests potential approaches to interpreting trained networks 
+in financial contexts.
 \end{enumerate}
 
-\subsection{Computational complexity}
+\subsection{Concluding Remarks}
 
-For $N$ strikes and $M$ sample points:
-\begin{itemize}
-\item Forming the design matrix $\Phi$: $O(MN)$
-\item Computing $\Phi^T\Phi$: $O(MN^2)$
-\item Solving normal equations: $O(N^3)$ (dense) or $O(N)$ (sparse, band structure)
-\item Total: $O(MN^2+N^3)$
-\end{itemize}
+The equivalence $\text{option} = \text{spline} = \text{ReLU}$ reveals a deep mathematical unity across fields that are often studied separately. This suggests that techniques from approximation theory (optimal knot placement) could inform financial engineering (optimal strike selection), while insights from neural network training could improve spline approximation methods.
 
-For large $N$, iterative methods (conjugate gradient) reduce to $O(MN\cdot k)$ where $k$ is the iteration count.
+By making these connections explicit, we hope to facilitate cross-disciplinary research and provide a solid foundation for future work at the intersection of mathematical finance, approximation theory, and machine learning.
 
-\subsection{Stability and conditioning}
+\begin{thebibliography}{9}
+\bibitem{breeden1978prices}
+Breeden, D. T., and Litzenberger, R. H. (1978). Prices of state-contingent claims implicit in option prices. \emph{Journal of Business}, 51(4), 621-651.
 
-The condition number of $\Phi^T\Phi$ grows as $O(1/h^2)$ where $h$ is the minimum strike spacing. This ill-conditioning motivates regularization. The regularized normal equations
-\[(\Phi^T\Phi+\lambda I)\mathbf{w}=\Phi^T\mathbf{f}\]
-have condition number bounded by $\kappa(\Phi^T\Phi+\lambda I)\le\kappa(\Phi^T\Phi)/\lambda$ for small $\lambda$.
+\bibitem{carr2001towards}
+Carr, P., and Madan, D. (2001). Towards a theory of volatility trading. \emph{Option Pricing, Interest Rates and Risk Management}, 458-476.
 
-\section{Applications to finance}\label{sec:applications}
+\bibitem{cybenko1989approximation}
+Cybenko, G. (1989). Approximation by superpositions of a sigmoidal function. \emph{Mathematics of Control, Signals and Systems}, 2(4), 303-314.
 
-\subsection{Static replication of exotic payoffs}
+\bibitem{deboor2001}
+de Boor, C. (2001). \emph{A Practical Guide to Splines}. Springer.
 
-Given an exotic payoff $f(S_T)$ at maturity, the option-based representation
-\[f(S_T)\approx\alpha+\beta S_T+\sum_{i=1}^Nw_i(S_T-K_i)_+\]
-provides a static replicating portfolio consisting of:
-\begin{itemize}
-\item Cash position $\alpha$
-\item $\beta$ units of stock
-\item $w_i$ units of call options with strike $K_i$
-\end{itemize}
+\bibitem{leshno1993multilayer}
+Leshno, M., Lin, V. Y., Pinkus, A., and Schocken, S. (1993). Multilayer feedforward networks with a nonpolynomial activation function can approximate any function. \emph{Neural Networks}, 6(6), 861-867.
 
-This portfolio requires no dynamic rebalancing and replicates the payoff at maturity.
+\bibitem{rudin1976}
+Rudin, W. (1976). \emph{Principles of Mathematical Analysis} (3rd ed.). McGraw-Hill.
 
-\subsection{Model-free bounds}
-
-For a convex payoff $f$, Theorem~\ref{thm:convex_approx} guarantees approximation with nonnegative weights $w_i\ge 0$. This corresponds to a super-replicating portfolio. By monotone convergence, the limit
-\[\sup_{n}\left(\alpha_n+\beta_n S_T+\sum_{i=1}^{n}w_{n,i}(S_T-K_{n,i})_+\right)\]
-converges to $f(S_T)$ from below (or above, depending on the construction), yielding model-free arbitrage bounds.
-
-\subsection{Implied volatility surface}
-
-The option basis provides a natural parameterization of the implied volatility surface. Given market prices of vanilla options, fit a smooth function $f(K)=C_{\text{market}}(K)$ and represent via option basis. The weights $\{w_i\}$ encode the local convexity and are related to the risk-neutral density.
-
-\subsection{Portfolio hedging}
-
-The software implementation computes portfolio Greeks (Section~\ref{sec:software}), enabling:
-\begin{itemize}
-    \item Delta-neutral hedging strategies
-    \item Gamma exposure analysis
-    \item Vega risk management
-    \item Time decay (theta) monitoring
-\end{itemize}
-
-\section{Conclusion}\label{sec:conclusion}
-
-We have established comprehensive theoretical foundations for using option payoffs as basis functions:
-
-\begin{enumerate}
-\item \textbf{Density}: Finite portfolios of vanilla calls with affine terms are dense in $C([a,b])$ (Theorem~\ref{thm:density}) and $L^p([a,b])$ (Theorem~\ref{thm:lp_density}).
-
-\item \textbf{Convergence rates}: For $f\in C^2$, the error decays as $O(h^2)$ where $h$ is the mesh size (Theorem~\ref{thm:c2_rate}). For Hölder continuous functions, the rate is $O(h^\alpha)$ (Theorem~\ref{thm:holder_rate}).
-
-\item \textbf{Integral representation}: Functions with distributional second derivatives admit exact integral representations using hinge kernels (Proposition~\ref{prop:integral_repr}, Theorem~\ref{thm:sobolev_repr}).
-
-\item \textbf{Optimality}: Best approximations exist uniquely in finite-dimensional subspaces and are characterized by equioscillation (Theorems~\ref{thm:best_approx}--\ref{thm:equiosc}).
-
-\item \textbf{Formal verification}: Core results are machine-checked in Lean~4 (Section~\ref{sec:lean}), including:
-\begin{itemize}
-    \item All foundational properties of hinge functions (11 verified lemmas/theorems)
-    \item \textit{Complete proof} of the integral representation theorem for $C^2$ functions (72 lines, Proposition~\ref{prop:integral_repr})
-    \item Connection to ReLU neural networks and the Universal Approximation Theorem
-\end{itemize}
-The integral representation proof demonstrates Lean's capability to handle sophisticated calculus arguments involving the Fundamental Theorem of Calculus.
-
-\item \textbf{Software implementation}: A comprehensive Python library with GUI enables practical computation and visualization (Section~\ref{sec:software}).
-
-\item \textbf{Numerical validation}: Experiments confirm theoretical predictions, demonstrating rapid convergence and practical effectiveness for smooth test functions (Section~\ref{sec:experiments}).
-\end{enumerate}
-
-The basis $\mathcal{S}$ is therefore rigorously established as a universal approximator for continuous functions on compact intervals, with explicit constructive algorithms, quantitative error bounds, formal verification, and practical computational methods.
-
-\subsection{Future work}
-
-Several directions merit further investigation:
-\begin{itemize}
-    \item Completing the Lean~4 proofs of the main density theorem
-    \item Extending to multi-dimensional settings with basket options
-    \item Incorporating transaction costs into the optimization
-    \item Developing adaptive strike selection algorithms
-    \item Applying to machine learning as activation functions
-\end{itemize}
-
-\section*{Acknowledgements}
-The author thanks the anonymous reviewers for helpful suggestions that improved the presentation and rigor of the proofs.
-
-\begin{thebibliography}{99}
-\bibitem{deBoor} C. de Boor, \emph{A Practical Guide to Splines}, Springer, 2001.
-
-\bibitem{Rockafellar} R. T. Rockafellar, \emph{Convex Analysis}, Princeton University Press, 1970.
-
-\bibitem{BlackScholes} F. Black and M. Scholes, The pricing of options and corporate liabilities, \emph{Journal of Political Economy} 81(3), 637--654, 1973.
-
-\bibitem{Cheney} E. W. Cheney, \emph{Introduction to Approximation Theory}, AMS Chelsea, 1982.
-
-\bibitem{Powell} M. J. D. Powell, \emph{Approximation Theory and Methods}, Cambridge University Press, 1981.
-
-\bibitem{Carr-Madan} P. Carr and D. Madan, Towards a theory of volatility trading, in \emph{Volatility: New Estimation Techniques for Pricing Derivatives}, Risk Books, 1998.
-
-\bibitem{Breeden-Litzenberger} D. T. Breeden and R. H. Litzenberger, Prices of state-contingent claims implicit in option prices, \emph{Journal of Business} 51(4), 621--651, 1978.
-
-\bibitem{Rudin} W. Rudin, \emph{Principles of Mathematical Analysis}, 3rd ed., McGraw-Hill, 1976.
-
-\bibitem{Royden} H. L. Royden and P. M. Fitzpatrick, \emph{Real Analysis}, 4th ed., Prentice Hall, 2010.
-
-\bibitem{Adams} R. A. Adams and J. J. F. Fournier, \emph{Sobolev Spaces}, 2nd ed., Academic Press, 2003.
-
-\bibitem{Lean4} L. de Moura and S. Ullrich, The Lean 4 theorem prover and programming language, in \emph{CADE-28}, Springer, 2021.
-
-\bibitem{Mathlib} The Mathlib Community, The Lean Mathematical Library, \url{https://leanprover-community.github.io/mathlib4_docs/}, 2024.
-
+\bibitem{hornik1989}
+Hornik, K., Stinchcombe, M., and White, H. (1989). Multilayer feedforward networks are universal approximators. \emph{Neural Networks}, 2(5), 359–366. \doi{10.1016/0893-6080(89)90020-8}. Available at: \url{https://www.sciencedirect.com/science/article/pii/0893608089900208}.
 \end{thebibliography}
 
-\appendix
 
-\section{Software availability}
-
-The Python implementation and Lean proofs are available at:
-\begin{itemize}
-    \item Python library: \texttt{options\_func\_maker.py}
-    \item GUI application: \texttt{options\_gui.py}
-    \item Lean proofs: \texttt{proof/Proof/Basic.lean}
-\end{itemize}
-
-Requirements: Python 3.7+, NumPy, Matplotlib, SciPy (optional). For Lean proofs: Lean 4 with Mathlib.
-
-\section{Notation index}
-
-\begin{tabular}{@{}ll@{}}
-\toprule
-Symbol & Meaning \\
-\midrule
-$\phi_K(x)$ & Hinge (call) function $(x-K)_+$ \\
-$\psi_K(x)$ & Put function $(K-x)_+$ \\
-$\mathcal{S}$ & Option-based linear span \\
-$C([a,b])$ & Continuous functions on $[a,b]$ \\
-$C^k([a,b])$ & $k$-times differentiable functions \\
-$W^{k,p}([a,b])$ & Sobolev space \\
-$\|\cdot\|_\infty$ & Supremum norm \\
-$\Delta, \Gamma, \mathcal{V}, \Theta$ & Option Greeks \\
-\bottomrule
-\end{tabular}
 
 \end{document}

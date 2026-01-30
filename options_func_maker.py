@@ -12,6 +12,7 @@ approximates sin(x) over a specified range.
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Callable, Tuple, Optional
+import warnings
 
 try:
     from scipy.optimize import minimize
@@ -100,8 +101,10 @@ def cumulative_normal(x: np.ndarray, mu: float = 0.0, sigma: float = 1.0) -> np.
     z = (x - mu) / (sigma + 1e-10)  # Avoid division by zero
 
     # Abramowitz and Stegun approximation (accurate to ~7 decimal places)
-    sign = np.sign(z)
-    z_abs = np.abs(z)
+    # IMPORTANT: Need to divide by sqrt(2) for the erf transformation
+    z_erf = z / np.sqrt(2.0)
+    sign = np.sign(z_erf)
+    z_abs = np.abs(z_erf)
 
     # Constants for approximation
     a1, a2, a3, a4, a5 = (
@@ -316,14 +319,20 @@ def black_scholes_gamma(S: float, K: float, T: float, r: float, sigma: float) ->
 
 
 def black_scholes_vega(S: float, K: float, T: float, r: float, sigma: float) -> float:
-    """Calculate vega (volatility sensitivity) for an option."""
+    """
+    Calculate vega (volatility sensitivity) for an option.
+
+    Returns the change in option value per 0.01 (1 percentage point) change in volatility.
+    E.g., if vega = 15.3 and volatility changes from 20% to 21% (Δσ = 0.01),
+    the option value changes by approximately $15.30.
+    """
     if T <= 0 or K <= 0:
         return 0.0
     d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     # Vega is the same for calls and puts
-    return (
-        S * gaussian_pdf(np.array([d1]), 0.0, 1.0)[0] * np.sqrt(T) / 100.0
-    )  # Per 1% vol change
+    # Standard vega formula: S * φ(d1) * √T
+    # This gives change per unit change in σ (i.e., per 0.01 when σ is in decimal form)
+    return S * gaussian_pdf(np.array([d1]), 0.0, 1.0)[0] * np.sqrt(T)
 
 
 def black_scholes_theta_call(
@@ -629,6 +638,24 @@ class OptionsFunctionApproximator:
             if regularization > 0:
                 A += regularization * np.eye(self.n_basis)
 
+            # Check matrix conditioning for numerical stability
+            cond_number = np.linalg.cond(A)
+            if cond_number > 1e12:
+                warnings.warn(
+                    f"Matrix is ill-conditioned (condition number: {cond_number:.2e}). "
+                    f"Results may be numerically unstable. Consider:\n"
+                    f"  1. Increasing regularization (current: {regularization})\n"
+                    f"  2. Reducing number of options\n"
+                    f"  3. Checking for redundant basis functions",
+                    UserWarning
+                )
+            elif cond_number > 1e9:
+                warnings.warn(
+                    f"Matrix conditioning is marginal (condition number: {cond_number:.2e}). "
+                    f"Consider increasing regularization.",
+                    UserWarning
+                )
+
             self.weights = np.linalg.solve(A, b)
 
         elif method == "minimize":
@@ -681,8 +708,14 @@ class OptionsFunctionApproximator:
 
         Returns:
             Tuple of (premiums_array, premium_dict)
-            - premiums_array: Array of premiums for each basis function (0 for non-options)
-            - premium_dict: Dictionary with detailed premium information
+            - premiums_array: Array of net costs for each basis function
+              (positive = cash outflow for long, negative = cash inflow for short)
+            - premium_dict: Dictionary with detailed premium information including:
+              * Individual option details (calls, puts)
+              * net_cost: Total net cash flow (outflow - inflow)
+              * gross_long_cost: Total premium paid for long positions
+              * gross_short_credit: Total premium received from short positions
+              * gross_notional: Sum of absolute values (for capital requirements)
         """
         if self.weights is None:
             raise ValueError("Must call approximate() first")
@@ -691,8 +724,11 @@ class OptionsFunctionApproximator:
         premium_details = {
             "calls": [],
             "puts": [],
-            "stock_cost": 0.0,
+            "stock_net_cost": 0.0,
             "non_option_functions": [],
+            "gross_long_cost": 0.0,
+            "gross_short_credit": 0.0,
+            "gross_notional": 0.0,
         }
 
         for i, (weight, (opt_type, strike), name) in enumerate(
@@ -702,40 +738,66 @@ class OptionsFunctionApproximator:
                 premium = black_scholes_call(
                     self.S0, strike, self.T, self.r, self.sigma
                 )
-                cost = abs(weight) * premium  # Cost is absolute weight * premium
-                premiums[i] = cost
+                net_cost = weight * premium  # Positive = pay, negative = receive
+                gross_cost = abs(weight) * premium
+                premiums[i] = net_cost
+
+                if weight > 0:
+                    premium_details["gross_long_cost"] += gross_cost
+                else:
+                    premium_details["gross_short_credit"] += gross_cost
+
+                premium_details["gross_notional"] += gross_cost
                 premium_details["calls"].append(
                     {
                         "name": name,
                         "strike": strike,
                         "weight": weight,
                         "premium_per_unit": premium,
-                        "total_cost": cost,
+                        "net_cost": net_cost,
+                        "position": "LONG" if weight > 0 else "SHORT",
                     }
                 )
             elif opt_type == "put":
                 premium = black_scholes_put(self.S0, strike, self.T, self.r, self.sigma)
-                cost = abs(weight) * premium
-                premiums[i] = cost
+                net_cost = weight * premium
+                gross_cost = abs(weight) * premium
+                premiums[i] = net_cost
+
+                if weight > 0:
+                    premium_details["gross_long_cost"] += gross_cost
+                else:
+                    premium_details["gross_short_credit"] += gross_cost
+
+                premium_details["gross_notional"] += gross_cost
                 premium_details["puts"].append(
                     {
                         "name": name,
                         "strike": strike,
                         "weight": weight,
                         "premium_per_unit": premium,
-                        "total_cost": cost,
+                        "net_cost": net_cost,
+                        "position": "LONG" if weight > 0 else "SHORT",
                     }
                 )
             elif opt_type == "stock":
-                # Stock cost is just the absolute weight * current stock price
-                cost = abs(weight) * self.S0
-                premiums[i] = cost
-                premium_details["stock_cost"] += cost
+                # Stock cost: positive weight = long (pay), negative = short (receive)
+                net_cost = weight * self.S0
+                premiums[i] = net_cost
+                premium_details["stock_net_cost"] += net_cost
+                if weight > 0:
+                    premium_details["gross_long_cost"] += abs(net_cost)
+                else:
+                    premium_details["gross_short_credit"] += abs(net_cost)
+                premium_details["gross_notional"] += abs(net_cost)
             else:
                 # Non-option basis functions have no direct cost
                 premium_details["non_option_functions"].append(
                     {"name": name, "weight": weight}
                 )
+
+        # Calculate net cost (total cash outflow)
+        premium_details["net_cost"] = premiums.sum()
 
         return premiums, premium_details
 
@@ -800,13 +862,14 @@ class OptionsFunctionApproximator:
 
     def get_total_cost(self) -> float:
         """
-        Calculate the total cost of the option portfolio.
+        Calculate the total net cost of the option portfolio.
 
         Returns:
-            Total cost in dollars
+            Net cost in dollars (positive = cash outflow, negative = cash inflow/credit)
+            This represents: (Premium Paid for Longs) - (Premium Received from Shorts)
         """
-        premiums, _ = self.calculate_premiums()
-        return premiums.sum()
+        premiums, details = self.calculate_premiums()
+        return details["net_cost"]
 
     def print_cost_breakdown(self):
         """
@@ -817,7 +880,10 @@ class OptionsFunctionApproximator:
             return
 
         premiums, details = self.calculate_premiums()
-        total_cost = premiums.sum()
+        net_cost = details["net_cost"]
+        gross_long = details["gross_long_cost"]
+        gross_short = details["gross_short_credit"]
+        gross_notional = details["gross_notional"]
 
         print("\n" + "=" * 70)
         print("COST BREAKDOWN - Decomposition into Vanilla Options")
@@ -829,46 +895,58 @@ class OptionsFunctionApproximator:
         print(f"  Volatility (sigma): {self.sigma*100:.2f}%")
 
         print(f"\n{'='*70}")
-        print(f"TOTAL PORTFOLIO COST: ${total_cost:.2f}")
+        print(f"PORTFOLIO COST SUMMARY")
+        print(f"{'='*70}")
+        print(f"  Gross Long Positions (cash paid):     ${gross_long:>12.2f}")
+        print(f"  Gross Short Positions (credit received): ${gross_short:>12.2f}")
+        print(f"  {'─'*70}")
+        print(f"  NET COST (outflow - inflow):          ${net_cost:>12.2f}")
+        print(f"  {'─'*70}")
+        print(f"  Gross Notional (capital required):    ${gross_notional:>12.2f}")
         print(f"{'='*70}")
 
         if details["calls"]:
             print(f"\nCALL OPTIONS ({len(details['calls'])} total):")
-            print("-" * 70)
+            print("-" * 80)
             print(
-                f"{'Strike':<10} {'Weight':<12} {'Premium/Unit':<15} {'Total Cost':<15}"
+                f"{'Position':<8} {'Strike':<10} {'Weight':<12} {'Premium/Unit':<15} {'Net Cost':<15}"
             )
-            print("-" * 70)
-            call_total = 0.0
+            print("-" * 80)
+            call_net = 0.0
             for call in sorted(details["calls"], key=lambda x: x["strike"]):
+                pos = call['position']
+                sign = '+' if call['net_cost'] >= 0 else ''
                 print(
-                    f"${call['strike']:<9.2f} {call['weight']:<12.4f} "
-                    f"${call['premium_per_unit']:<14.2f} ${call['total_cost']:<14.2f}"
+                    f"{pos:<8} ${call['strike']:<9.2f} {call['weight']:>11.4f} "
+                    f"${call['premium_per_unit']:<14.2f} {sign}${call['net_cost']:<14.2f}"
                 )
-                call_total += call["total_cost"]
-            print("-" * 70)
-            print(f"Call Options Subtotal: ${call_total:.2f}")
+                call_net += call["net_cost"]
+            print("-" * 80)
+            print(f"Call Options Net Cost: ${call_net:.2f}")
 
         if details["puts"]:
             print(f"\nPUT OPTIONS ({len(details['puts'])} total):")
-            print("-" * 70)
+            print("-" * 80)
             print(
-                f"{'Strike':<10} {'Weight':<12} {'Premium/Unit':<15} {'Total Cost':<15}"
+                f"{'Position':<8} {'Strike':<10} {'Weight':<12} {'Premium/Unit':<15} {'Net Cost':<15}"
             )
-            print("-" * 70)
-            put_total = 0.0
+            print("-" * 80)
+            put_net = 0.0
             for put in sorted(details["puts"], key=lambda x: x["strike"]):
+                pos = put['position']
+                sign = '+' if put['net_cost'] >= 0 else ''
                 print(
-                    f"${put['strike']:<9.2f} {put['weight']:<12.4f} "
-                    f"${put['premium_per_unit']:<14.2f} ${put['total_cost']:<14.2f}"
+                    f"{pos:<8} ${put['strike']:<9.2f} {put['weight']:>11.4f} "
+                    f"${put['premium_per_unit']:<14.2f} {sign}${put['net_cost']:<14.2f}"
                 )
-                put_total += put["total_cost"]
-            print("-" * 70)
-            print(f"Put Options Subtotal: ${put_total:.2f}")
+                put_net += put["net_cost"]
+            print("-" * 80)
+            print(f"Put Options Net Cost: ${put_net:.2f}")
 
-        if details["stock_cost"] > 0:
+        if details["stock_net_cost"] != 0:
             print(f"\nSTOCK POSITION:")
-            print(f"  Total Cost: ${details['stock_cost']:.2f}")
+            sign = '+' if details["stock_net_cost"] >= 0 else ''
+            print(f"  Net Cost: {sign}${details['stock_net_cost']:.2f}")
 
         if details["non_option_functions"]:
             print(
@@ -903,29 +981,24 @@ class OptionsFunctionApproximator:
         print("-" * 70)
 
         # Calculate cost efficiency metrics
-        if self.weights is not None:
-            # Get approximation error from last approximation
-            stock_prices = np.linspace(self.price_range[0], self.price_range[1], 1000)
-            basis_matrix = self.evaluate_basis(stock_prices)
-            approx_values = basis_matrix @ self.weights
-            # We can't recalculate target here, but we can show cost per basis function
-            cost_per_option = (
-                total_cost / (len(details["calls"]) + len(details["puts"]))
-                if (len(details["calls"]) + len(details["puts"])) > 0
-                else 0.0
-            )
-
         print("\n" + "=" * 70)
         print("COST EFFICIENCY METRICS")
         print("-" * 70)
-        print(f"  Total Options: {len(details['calls']) + len(details['puts'])}")
-        print(f"  Average Cost per Option: ${cost_per_option:.2f}")
-        print(
-            f"  Options as % of Total Cost: {(total_cost - details['stock_cost']) / total_cost * 100:.1f}%"
-        )
-        print(
-            f"  Stock Position as % of Total Cost: {details['stock_cost'] / total_cost * 100:.1f}%"
-        )
+        num_long = sum(1 for c in details["calls"] if c["weight"] > 0) + sum(1 for p in details["puts"] if p["weight"] > 0)
+        num_short = sum(1 for c in details["calls"] if c["weight"] < 0) + sum(1 for p in details["puts"] if p["weight"] < 0)
+        total_opts = len(details['calls']) + len(details['puts'])
+
+        print(f"  Total Options: {total_opts}")
+        print(f"    - Long positions: {num_long}")
+        print(f"    - Short positions: {num_short}")
+
+        if gross_notional > 0:
+            print(f"  Net Cost / Gross Notional: {net_cost / gross_notional * 100:.1f}%")
+            if details['stock_net_cost'] != 0:
+                stock_pct = abs(details['stock_net_cost']) / gross_notional * 100
+                opts_pct = 100 - stock_pct
+                print(f"  Options as % of Notional: {opts_pct:.1f}%")
+                print(f"  Stock as % of Notional: {stock_pct:.1f}%")
         print("-" * 70)
 
         print("\n" + "=" * 70)

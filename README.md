@@ -1,8 +1,12 @@
 # Options Function Approximator
 
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Lean 4](https://img.shields.io/badge/Lean-4-purple.svg)](https://leanprover.github.io/)
+
 A comprehensive Python library and GUI application for approximating arbitrary functions using combinations of financial options. The system decomposes complex payoffs into vanilla options with full Black-Scholes pricing and risk metrics (Greeks).
 
-**Includes Lean 4 formal proofs** of the underlying mathematical theory.
+**Includes Lean 4 formal proofs** of the underlying mathematical theory and a complete LaTeX manuscript detailing the mathematical foundations connecting options, splines, and neural networks.
 
 ## Table of Contents
 
@@ -45,16 +49,16 @@ The Options Function Approximator uses options (calls and puts) as basis functio
 
 ### Requirements
 
-- Python 3.7+
-- NumPy
-- Matplotlib
-- SciPy (optional)
+- Python 3.7 or higher
+- NumPy (≥2.0)
+- Matplotlib (≥3.0)
+- SciPy (≥1.0, optional for advanced optimization)
 
-### Setup
+### Quick Install
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/HenryR2112/option_fitter.git
 cd option_fitter
 
 # Create virtual environment (recommended)
@@ -62,14 +66,29 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install numpy matplotlib scipy
+pip install -r requirements.txt
 ```
 
 ### Verify Installation
 
 ```bash
-python -c "from options_func_maker import OptionsFunctionApproximator; print('OK')"
+python -c "from options_func_maker import OptionsFunctionApproximator; print('✓ Installation successful')"
 ```
+
+### Optional: Lean 4 Proofs
+
+To build and verify the formal proofs:
+
+```bash
+# Install Lean 4 (macOS/Linux)
+curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
+
+# Build the proofs
+cd proof
+lake build
+```
+
+See [proof/README.md](proof/README.md) for detailed instructions.
 
 ## Quick Start
 
@@ -110,19 +129,22 @@ python options_gui.py
 ### GUI Features
 
 - **Function Selection**: Choose from presets (sin, cos, sigmoid, Gaussian, bull spread, butterfly) or define custom functions
-- **Real-time Visualization**: Interactive matplotlib charts with zoom/pan
-- **Parameter Controls**: Adjust price range, number of options, and Black-Scholes parameters
-- **Results Tabs**:
+- **Real-time Visualization**: Interactive matplotlib charts with zoom/pan capabilities
+- **Parameter Controls**: Adjust price range, number of options, and Black-Scholes parameters (S₀, r, T, σ)
+- **Results Dashboard**:
   - **Summary**: MSE, RMSE, total cost, portfolio composition
-  - **Options Breakdown**: Detailed tables of call and put positions
-  - **Portfolio Greeks**: Delta, Gamma, Vega, Theta
-  - **Details**: Full text output
-- **Export**: Save results to CSV (Ctrl+E)
+  - **Options Breakdown**: Detailed tables of call and put positions with strikes and weights
+  - **Portfolio Greeks**: Delta, Gamma, Vega, and Theta with interpretations
+  - **Details**: Complete text output with cost breakdown
+- **Export Capabilities**: Save results to CSV format (Ctrl+E)
+- **Professional Dark Theme**: Modern, eye-friendly interface
 
 ### Keyboard Shortcuts
 
-- `Ctrl+R`: Calculate approximation
-- `Ctrl+E`: Export results
+- `Ctrl+R` or `⌘R`: Calculate approximation
+- `Ctrl+E` or `⌘E`: Export results to CSV
+
+For detailed GUI documentation, see [README_GUI.md](README_GUI.md).
 
 ## Core Library Usage
 
@@ -389,47 +411,185 @@ weights, mse = approx.approximate(custom_payoff)
 
 ```
 option_fitter/
-├── options_func_maker.py   # Core library
-├── options_gui.py          # GUI application
-├── README.md               # This file
-├── LEAN_PROOFS_README.md   # Lean proofs overview
+├── options_func_maker.py      # Core approximation library
+├── options_gui.py             # Professional GUI application
+├── README.md                  # Main documentation (this file)
+├── README_GUI.md              # Detailed GUI documentation
+├── CHANGES.md                 # Version history and changelog
+├── requirements.txt           # Python dependencies
+├── .gitignore                 # Git ignore rules
 │
-└── proof/                  # Lean 4 formalization
-    ├── Proof/
-    │   └── Basic.lean      # Main proofs
-    ├── Proof.lean          # Root import
-    ├── lakefile.toml       # Build config
-    ├── lean-toolchain      # Lean version
-    └── README.md           # Proof documentation
+├── experiments/               # Numerical convergence experiments
+│   ├── run_experiments.py     # Experiment runner
+│   ├── results.csv            # Convergence data
+│   ├── rmse_vs_n.png          # Visualization
+│   └── README.md              # Experiments documentation
+│
+├── proof/                     # Lean 4 formal verification
+│   ├── Proof/
+│   │   └── Basic.lean         # Formalized theorems and proofs
+│   ├── Proof.lean             # Root module
+│   ├── lakefile.toml          # Lake build configuration
+│   ├── lean-toolchain         # Lean version pinning
+│   └── README.md              # Proof system documentation
+│
+└── tex/                       # LaTeX manuscript
+    └── draft.tex              # Academic paper connecting finance, splines, and ML
 ```
 
+## Experiments and Validation
+
+The `experiments/` directory contains numerical experiments demonstrating convergence properties.
+
+```bash
+cd experiments
+python run_experiments.py
+```
+
+This generates:
+- `results.csv`: Convergence data for different numbers of options
+- `rmse_vs_n.png`: Visualization of approximation error vs. number of basis functions
+
+See [experiments/README.md](experiments/README.md) for details.
+
+## Academic Paper
+
+The `tex/` directory contains a complete LaTeX manuscript:
+
+**"Options as Basis Functions: A Unifying Perspective Connecting Finance, Splines, and Neural Networks"**
+
+The paper provides:
+- Unified mathematical framework connecting financial options, linear B-splines, and ReLU activations
+- Constructive density proofs with error bounds
+- Formal verification details
+- Interdisciplinary connections and applications
+
+To compile:
+```bash
+cd tex
+pdflatex draft.tex
+```
+
+## Citation
+
+If you use this software or build upon the ideas in your research, please cite:
+
+```bibtex
+@misc{ramstad2026options,
+  author = {Ramstad, Henry James},
+  title = {Options as Basis Functions: A Unifying Perspective},
+  year = {2026},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/HenryR2112/option_fitter}}
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Import Error**: Ensure you've activated the virtual environment and installed dependencies:
+```bash
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**GUI Won't Launch**: Check that tkinter is installed (usually included with Python):
+```bash
+python -m tkinter  # Should open a test window
+```
+
+**Lean Build Fails**: Ensure Lean 4 is properly installed and lake is in your PATH:
+```bash
+lake --version
+```
+
+**High Memory Usage**: Reduce `n_points` in approximation calls or use fewer basis functions.
+
 ## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Quick Contribution Guide
+
+1. **Fork the repository** and create a feature branch
+2. **Follow PEP 8** for Python code style
+3. **Add tests** for new functionality
+4. **Update documentation** for any changes
+5. **Submit a pull request** with a clear description
+
+### Areas for Contribution
+
+- Additional basis functions (wavelets, Fourier terms, etc.)
+- Performance optimizations
+- Additional numerical experiments
+- Completing Lean 4 proof gaps (replacing `sorry` statements)
+- Examples and tutorials
+- Bug fixes and improvements
 
 ### Code Style
 
 - Follow PEP 8 for Python code
-- Use type hints where appropriate
-- Document public functions with docstrings
-
-### Adding New Basis Functions
-
-1. Implement function in `options_func_maker.py`
-2. Add constructor parameters
-3. Update basis function creation in `__init__`
-4. Update documentation
+- Use type hints for function signatures
+- Document public functions with docstrings (Google style preferred)
+- Keep functions focused and modular
 
 ### Extending the Lean Proofs
 
-1. Open `proof/Proof/Basic.lean` in VS Code with Lean 4 extension
-2. Replace `sorry` placeholders with actual proofs
-3. Run `lake build` to verify
+1. Install Lean 4 and VS Code with Lean extension
+2. Open `proof/Proof/Basic.lean`
+3. Replace `sorry` placeholders with proofs using Mathlib lemmas
+4. Run `lake build` to verify correctness
+5. Submit a PR with your completed proofs
 
 ## References
 
+### Financial Mathematics
 - Black, F., & Scholes, M. (1973). The pricing of options and corporate liabilities. *Journal of Political Economy*, 81(3), 637-654.
+- Breeden, D. T., & Litzenberger, R. H. (1978). Prices of state-contingent claims implicit in option prices. *Journal of Business*, 51(4), 621-651.
+- Carr, P., & Madan, D. (2001). Towards a theory of volatility trading. *Option Pricing, Interest Rates and Risk Management*, 458-476.
 - Hull, J. C. (2017). *Options, Futures, and Other Derivatives* (10th ed.). Pearson.
-- Carr, P., & Madan, D. (2001). Optimal positioning in derivative securities. *Quantitative Finance*, 1(1), 19-37.
+
+### Approximation Theory
+- de Boor, C. (2001). *A Practical Guide to Splines*. Springer.
+- Schumaker, L. L. (2007). *Spline Functions: Basic Theory* (3rd ed.). Cambridge University Press.
+
+### Machine Learning
+- Cybenko, G. (1989). Approximation by superpositions of a sigmoidal function. *Mathematics of Control, Signals and Systems*, 2(4), 303-314.
+- Leshno, M., Lin, V. Y., Pinkus, A., & Schocken, S. (1993). Multilayer feedforward networks with a nonpolynomial activation function can approximate any function. *Neural Networks*, 6(6), 861-867.
+- Hornik, K., Stinchcombe, M., & White, H. (1989). Multilayer feedforward networks are universal approximators. *Neural Networks*, 2(5), 359-366.
+
+### Formal Verification
+- [Lean 4 Documentation](https://leanprover.github.io/lean4/doc/)
+- [Mathlib Documentation](https://leanprover-community.github.io/mathlib4_docs/)
+
+## Related Projects
+
+- **Neural Network Libraries**: TensorFlow, PyTorch (ReLU activations)
+- **Spline Libraries**: scipy.interpolate, FITPACK
+- **Options Pricing**: QuantLib, PyQL
+- **Formal Verification**: Lean 4, Coq, Isabelle/HOL
 
 ## License
 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2026 Henry James Ramstad
+
 This project is provided for educational and research purposes.
+
+## Acknowledgments
+
+- Built with NumPy, Matplotlib, and SciPy
+- Formal proofs use Lean 4 and Mathlib
+- Inspired by connections between finance, approximation theory, and machine learning
+
+## Contact and Support
+
+- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/HenryR2112/option_fitter/issues)
+- **Discussions**: Join discussions in [GitHub Discussions](https://github.com/HenryR2112/option_fitter/discussions)
+
+---
+
+**Made with mathematical rigor and practical utility in mind.**
