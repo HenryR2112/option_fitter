@@ -13,6 +13,7 @@ open Set Filter Topology
 
 set_option linter.style.openClassical false
 
+-- Defined on the continous real line between [a,b]
 variable {a b : ℝ} (hab : a < b)
 
 -- The hinge (call) function: (x - K)_+ = max(x - K, 0)

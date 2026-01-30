@@ -36,7 +36,21 @@
   breaklines=true,
   frame=single,
   numbers=left,
-  numberstyle=\tiny\color{gray}
+  numberstyle=\tiny\color{gray},
+  literate=
+    {ℝ}{{$\mathbb{R}$}}1
+    {ℕ}{{$\mathbb{N}$}}1
+    {→}{{$\rightarrow$}}1
+    {∃}{{$\exists$}}1
+    {∀}{{$\forall$}}1
+    {∈}{{$\in$}}1
+    {≤}{{$\leq$}}1
+    {≥}{{$\geq$}}1
+    {∧}{{$\land$}}1
+    {α}{{$\alpha$}}1
+    {β}{{$\beta$}}1
+    {ε}{{$\varepsilon$}}1
+    {γ}{{$\gamma$}}1
 }
 
 \title{Options as Basis Functions: Rigorous Approximation Results for Call/Put Payoffs}
@@ -512,15 +526,15 @@ We have formalized the core mathematical results in Lean~4 using the Mathlib lib
 
 The hinge function is defined in Lean as:
 \begin{lstlisting}[language=Haskell]
-def hinge (K : ℝ) (x : ℝ) : ℝ := max (x - K) 0
+def hinge (K : Real) (x : Real) : Real := max (x - K) 0
 \end{lstlisting}
 
 The option span is defined as the set of functions expressible as finite linear combinations:
 \begin{lstlisting}[language=Haskell]
-def OptionSpan (a b : ℝ) : Set (ℝ → ℝ) :=
-  { g | ∃ (α β : ℝ) (N : ℕ) (Ks : Fin N → ℝ) (ws : Fin N → ℝ),
-      (∀ i, Ks i ∈ Set.Icc a b) ∧
-      ∀ x, g x = α + β * x +
+def OptionSpan (a b : Real) : Set (Real -> Real) :=
+  { g | exists (alpha beta : Real) (N : Nat) (Ks : Fin N -> Real) (ws : Fin N -> Real),
+      (forall i, Ks i in Set.Icc a b) /\
+      forall x, g x = alpha + beta * x +
         (Finset.univ.sum fun i => ws i * hinge (Ks i) x) }
 \end{lstlisting}
 
@@ -531,12 +545,12 @@ The following results have complete machine-checked proofs in Lean~4:
 \begin{enumerate}
     \item \textbf{Non-negativity} (\texttt{hinge\_nonneg}): $\phi_K(x) \geq 0$ for all $x \in \mathbb{R}$.
     \begin{lstlisting}[language=Haskell]
-lemma hinge_nonneg (K x : ℝ) : 0 ≤ hinge K x := le_max_right _ _
+lemma hinge_nonneg (K x : Real) : 0 <= hinge K x := le_max_right _ _
     \end{lstlisting}
 
     \item \textbf{Zero region} (\texttt{hinge\_zero\_for\_x\_le\_K}): For $x \leq K$, $\phi_K(x) = 0$.
     \begin{lstlisting}[language=Haskell]
-lemma hinge_zero_for_x_le_K (K x : ℝ) (h : x ≤ K) : hinge K x = 0 := by
+lemma hinge_zero_for_x_le_K (K x : Real) (h : x <= K) : hinge K x = 0 := by
   unfold hinge
   rw [max_eq_right]
   linarith
@@ -544,7 +558,7 @@ lemma hinge_zero_for_x_le_K (K x : ℝ) (h : x ≤ K) : hinge K x = 0 := by
 
     \item \textbf{Linear region} (\texttt{hinge\_linear\_for\_x\_ge\_K}): For $x \geq K$, $\phi_K(x) = x - K$.
     \begin{lstlisting}[language=Haskell]
-lemma hinge_linear_for_x_ge_K (K x : ℝ) (h : K ≤ x) : hinge K x = x - K := by
+lemma hinge_linear_for_x_ge_K (K x : Real) (h : K <= x) : hinge K x = x - K := by
   unfold hinge
   rw [max_eq_left]
   linarith
@@ -552,7 +566,7 @@ lemma hinge_linear_for_x_ge_K (K x : ℝ) (h : K ≤ x) : hinge K x = x - K := b
 
     \item \textbf{Continuity} (\texttt{hinge\_continuous}): The hinge function is continuous for all $K \in \mathbb{R}$.
     \begin{lstlisting}[language=Haskell]
-theorem hinge_continuous (K : ℝ) : Continuous (hinge K) := by
+theorem hinge_continuous (K : Real) : Continuous (hinge K) := by
   unfold hinge
   exact continuous_id.sub continuous_const |>.max continuous_const
     \end{lstlisting}
@@ -561,7 +575,7 @@ theorem hinge_continuous (K : ℝ) : Continuous (hinge K) := by
 
     \item \textbf{Lipschitz property} (\texttt{hinge\_lipschitz}): The hinge function is Lipschitz continuous with constant $1$.
     \begin{lstlisting}[language=Haskell]
-theorem hinge_lipschitz (K : R) : LipschitzWith 1 (hinge K) := by
+theorem hinge_lipschitz (K : Real) : LipschitzWith 1 (hinge K) := by
   unfold hinge
   apply LipschitzWith.mk_one
   intro x y
@@ -576,7 +590,7 @@ theorem hinge_lipschitz (K : R) : LipschitzWith 1 (hinge K) := by
 
     \item \textbf{Finite sums} (\texttt{finite\_sum\_hinges\_continuous}): Finite sums of weighted hinge functions are continuous.
     \begin{lstlisting}[language=Haskell]
-lemma finite_sum_hinges_continuous (N : ) (Ks : Fin N → ℝ) (ws : Fin N → ℝ) :
+lemma finite_sum_hinges_continuous (N : Nat) (Ks : Fin N -> Real) (ws : Fin N -> Real) :
     Continuous (fun x => Finset.univ.sum fun (i : Fin N) =>
       ws i * hinge (Ks i) x) := by
   apply continuous_finset_sum
@@ -588,14 +602,14 @@ lemma finite_sum_hinges_continuous (N : ) (Ks : Fin N → ℝ) (ws : Fin N → �
     \[g(x) = \alpha + \beta x + \sum_{i=1}^N w_i \phi_{K_i}(x)\]
     is continuous.
     \begin{lstlisting}[language=Haskell]
-theorem option_portfolio_continuous (α β : ℝ) (N : ℕ) (Ks : Fin N → ℝ) (ws : Fin N → ℝ) :
-    Continuous (fun x : ℝ => α + β * x +
+theorem option_portfolio_continuous (alpha beta : Real) (N : Nat) (Ks : Fin N -> Real) (ws : Fin N -> Real) :
+    Continuous (fun x : Real => alpha + beta * x +
       Finset.univ.sum (fun (i : Fin N) => ws i * hinge (Ks i) x)) := by
   apply Continuous.add
-  · apply Continuous.add
-    · exact continuous_const
-    · exact Continuous.mul continuous_const continuous_id
-  · exact finite_sum_hinges_continuous N Ks ws
+  . apply Continuous.add
+    . exact continuous_const
+    . exact Continuous.mul continuous_const continuous_id
+  . exact finite_sum_hinges_continuous N Ks ws
     \end{lstlisting}
 
     \item \textbf{Constant functions in $C([a,b])$} (\texttt{constant\_in\_C\_ab}): For any $c \in \mathbb{R}$, the constant function $f(x) = c$ belongs to $C([a,b])$.
@@ -604,10 +618,10 @@ theorem option_portfolio_continuous (α β : ℝ) (N : ℕ) (Ks : Fin N → ℝ)
 
     \item \textbf{Hinge restricted to $[a,b]$} (\texttt{hinge\_in\_C\_ab}): For any strike $K \in \mathbb{R}$, the hinge function $\phi_K$ restricted to $[a,b]$ belongs to $C([a,b])$.
     \begin{lstlisting}[language=Haskell]
-theorem hinge_in_C_ab (a b K : ℝ) :
-    ∃ f : C_ab a b, ∀ x : Set.Icc a b, f x = hinge K (x : ℝ) := by
-  use ⟨fun x => hinge K (x : ℝ),
-    Continuous.comp (hinge_continuous K) continuous_subtype_val⟩
+theorem hinge_in_C_ab (a b K : Real) :
+    exists f : C_ab a b, forall x : Set.Icc a b, f x = hinge K (x : Real) := by
+  use <fun x => hinge K (x : Real),
+    Continuous.comp (hinge_continuous K) continuous_subtype_val>
   intro x
   rfl
     \end{lstlisting}
@@ -667,13 +681,13 @@ Result & Type & Status \\
 \begin{remark}[Universal Approximation as axiom]
 The main density result (Theorem~\ref{thm:density}) is formalized as following directly from the Universal Approximation Theorem (UAT) for ReLU networks. We introduce this as an axiom:
 \begin{lstlisting}[language=Haskell]
-axiom UniversalApproximationTheoremReLU (a b : ℝ) (hab : a < b)
-  (f : C_ab a b) (ε : ℝ) (hε : 0 < ε) :
-  ∃ (N : ℕ) (Ks : Fin N → ℝ) (α β : ℝ) (ws : Fin N → ℝ),
-    (∀ i, Ks i ∈ Set.Icc a b) ∧
-    (∀ x : Set.Icc a b,
-      |f x - (α + β * (x : ℝ) +
-        Finset.univ.sum (fun i => ws i * hinge (Ks i) (x : ℝ)))| < ε)
+axiom UniversalApproximationTheoremReLU (a b : Real) (hab : a < b)
+  (f : C_ab a b) (eps : Real) (heps : 0 < eps) :
+  exists (N : Nat) (Ks : Fin N -> Real) (alpha beta : Real) (ws : Fin N -> Real),
+    (forall i, Ks i in Set.Icc a b) /\
+    (forall x : Set.Icc a b,
+      |f x - (alpha + beta * (x : Real) +
+        Finset.univ.sum (fun i => ws i * hinge (Ks i) (x : Real)))| < eps)
 \end{lstlisting}
 
 This axiom encodes the mathematical fact that our option span (which is precisely a 1-hidden-layer ReLU network) is a universal approximator. The key observation is that $\phi_K(x) = \max(x - K, 0) = \text{ReLU}(x - K)$, making the connection explicit.
@@ -793,7 +807,7 @@ All verified results produce no errors during compilation. The proof file is sel
 The Lean formalization clarifies several important points:
 
 \begin{enumerate}
-    \item \textbf{Type discipline}: Working in Lean forces precise type handling. The continuous functions on $[a,b]$ are represented as the type \texttt{C(Set.Icc a b, ℝ)}, which embeds the compactness of the domain into the type itself.
+    \item \textbf{Type discipline}: Working in Lean forces precise type handling. The continuous functions on $[a,b]$ are represented as the type \texttt{C(Set.Icc a b, Real)}, which embeds the compactness of the domain into the type itself.
 
     \item \textbf{Constructivity}: The hinge function definition is direct and computable: \texttt{max (x - K) 0}. This computability carries through to portfolio evaluations, enabling practical computation.
 
